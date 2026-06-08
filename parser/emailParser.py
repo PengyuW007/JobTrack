@@ -1,27 +1,17 @@
-def detect_status(text):
-    text = text.lower()
+class EmailParser:
 
-    if "offer" in text or "congratulations" in text:
-        return "Offer"
+    @staticmethod
+    def extract_company(sender, subject):
+        pass
 
-    if "interview" in text:
-        return "Interview"
+    @staticmethod
+    def extract_position(subject, body):
+        pass
 
-    if "assessment" in text or "coding test" in text:
-        return "Assessment"
+    @staticmethod
+    def extract_interview_date(body):
+        pass
 
-    if (
-        "unfortunately" in text
-        or "not moving forward" in text
-        or "not be proceeding"
-        in text
-    ):
-        return "Rejected"
-
-    if (
-        "thank you for applying" in text
-        or "application received" in text
-    ):
-        return "Applied"
-
-    return "Unknown"
+    @staticmethod
+    def extract_assessment_link(body):
+        pass

@@ -1,7 +1,8 @@
 import os.path
-import base64
-from email.mime.text import MIMEText
+
 from persistence.DataAccess import DataAccess
+from business.EmailClassifier import EmailClassifier
+from gmail.GmailService import get_header, extract_body
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -52,23 +53,30 @@ def main():
         message = service.users().messages().get(
             userId="me",
             id=msg["id"],
-            format="metadata",
-            metadataHeaders=["Subject", "From", "Date"]
+            format="full",
         ).execute()
 
         headers = message["payload"]["headers"]
-        subject = next((h["value"] for h in headers if h["name"] == "Subject"), "")
-        sender = next((h["value"] for h in headers if h["name"] == "From"), "")
-        date = next((h["value"] for h in headers if h["name"] == "Date"), "")
+
+        subject = get_header(headers, "Subject")
+        sender = get_header(headers, "From")
+        date = get_header(headers, "Date")
+        body = extract_body(message["payload"])
+
+        combined_text = subject + " " + body
+        status = EmailClassifier.detect_status(combined_text)
+
+        print("Status:", status)
+        print("Body Preview:", body[:300])
 
         db.insert_job(
             msg["id"],
             sender,
             "",
             date,
-            "Unknown",
-            0,
-            0,
+            status,
+            1 if status == "Interview" else 0,
+            1 if status == "Offer" else 0,
             subject
         )
 

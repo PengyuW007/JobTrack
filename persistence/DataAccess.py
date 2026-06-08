@@ -31,9 +31,18 @@ class DataAccess:
 
         self.conn.commit()
 
-    def insert_job(self, gmail_id, company, position, email_date, status, interview_count, offer, subject):
+    def insert_job(
+            self,
+            gmail_id,
+            company,
+            position,
+            email_date,
+            status,
+            interview_count,
+            offer,
+            subject):
         self.cursor.execute("""
-        INSERT OR IGNORE INTO jobs(
+        INSERT INTO jobs(
             gmail_id,
             company,
             position,
@@ -44,16 +53,25 @@ class DataAccess:
             subject
         )
         VALUES(?,?,?,?,?,?,?,?)
-        """, (
-            gmail_id,
-            company,
-            position,
-            email_date,
-            status,
-            interview_count,
-            offer,
-            subject
-        ))
+        ON CONFLICT(gmail_id) DO UPDATE SET
+            company = excluded.company,
+            position = excluded.position,
+            email_date = excluded.email_date,
+            status = excluded.status,
+            interview_count = excluded.interview_count,
+            offer = excluded.offer,
+            subject = excluded.subject
+        """,
+                            (
+                                gmail_id,
+                                company,
+                                position,
+                                email_date,
+                                status,
+                                interview_count,
+                                offer,
+                                subject
+                            ))
 
         self.conn.commit()
 
