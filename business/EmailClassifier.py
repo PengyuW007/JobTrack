@@ -4,7 +4,8 @@ class EmailClassifier:
     def detect_status(subject):
         text = subject.lower()
 
-        if "offer" in text or "congratulations" in text:
+        if ("offer" in text
+                or "congratulations" in text):
             return "Offer"
 
         if "interview" in text:

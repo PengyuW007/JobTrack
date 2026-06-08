@@ -7,7 +7,6 @@ class DataAccess:
         self.cursor = self.conn.cursor()
 
     def create_tables(self):
-
         self.cursor.execute("""
         CREATE TABLE IF NOT EXISTS jobs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -16,16 +15,16 @@ class DataAccess:
 
             company TEXT,
             position TEXT,
+            sender TEXT,
 
             email_date TEXT,
-
             status TEXT,
 
             interview_count INTEGER DEFAULT 0,
-
             offer INTEGER DEFAULT 0,
 
-            subject TEXT
+            subject TEXT,
+            body_preview TEXT
         )
         """)
 
@@ -36,41 +35,49 @@ class DataAccess:
             gmail_id,
             company,
             position,
+            sender,
             email_date,
             status,
             interview_count,
             offer,
-            subject):
+            subject,
+            body_preview):
         self.cursor.execute("""
         INSERT INTO jobs(
             gmail_id,
             company,
             position,
+            sender,
             email_date,
             status,
             interview_count,
             offer,
-            subject
+            subject,
+            body_preview
         )
-        VALUES(?,?,?,?,?,?,?,?)
+        VALUES(?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(gmail_id) DO UPDATE SET
             company = excluded.company,
             position = excluded.position,
+            sender = excluded.sender,
             email_date = excluded.email_date,
             status = excluded.status,
             interview_count = excluded.interview_count,
             offer = excluded.offer,
-            subject = excluded.subject
+            subject = excluded.subject,
+            body_preview = excluded.body_preview
         """,
                             (
                                 gmail_id,
                                 company,
                                 position,
+                                sender,
                                 email_date,
                                 status,
                                 interview_count,
                                 offer,
-                                subject
+                                subject,
+                                body_preview
                             ))
 
         self.conn.commit()

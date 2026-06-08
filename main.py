@@ -71,13 +71,15 @@ def main():
 
         db.insert_job(
             msg["id"],
-            sender,
             "",
+            "",
+            sender,
             date,
             status,
             1 if status == "Interview" else 0,
             1 if status == "Offer" else 0,
-            subject
+            subject,
+            body[:500]
         )
 
         print("Inserted:", subject)
