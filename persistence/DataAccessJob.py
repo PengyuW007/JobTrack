@@ -11,6 +11,7 @@ class DataAccessJob:
         self.cursor.execute("""
         SELECT
             gmail_id,
+            application_key,
             company,
             position,
             sender,
@@ -31,6 +32,7 @@ class DataAccessJob:
         self.cursor.execute("""
         SELECT
             gmail_id,
+            application_key,
             company,
             position,
             sender,
@@ -52,6 +54,7 @@ class DataAccessJob:
         self.cursor.execute("""
         SELECT
             gmail_id,
+            application_key,
             company,
             position,
             sender,
@@ -76,6 +79,7 @@ class DataAccessJob:
         self.cursor.execute("""
         SELECT
             gmail_id,
+            application_key,
             company,
             position,
             sender,
@@ -97,13 +101,14 @@ class DataAccessJob:
     def _row_to_job(row):
         return JobApplication(
             gmail_id=row[0],
-            company=row[1],
-            position=row[2],
-            sender=row[3],
-            email_date=row[4],
-            status=row[5],
-            interview_count=row[6],
-            offer=row[7],
-            subject=row[8],
-            body_preview=row[9]
+            application_key=row[1],
+            company=row[2],
+            position=row[3],
+            sender=row[4],
+            email_date=row[5],
+            status=row[6],
+            interview_count=row[7],
+            offer=row[8],
+            subject=row[9],
+            body_preview=row[10]
         )

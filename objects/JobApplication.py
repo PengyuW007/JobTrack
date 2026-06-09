@@ -3,6 +3,7 @@ class JobApplication:
     def __init__(
             self,
             gmail_id,
+            application_key,
             company,
             position,
             sender,
@@ -14,6 +15,7 @@ class JobApplication:
             body_preview
     ):
         self.gmail_id = gmail_id
+        self.application_key = application_key
         self.company = company
         self.position = position
         self.sender = sender

@@ -1,5 +1,6 @@
 import sqlite3
 
+
 class DataAccess:
 
     def __init__(self):
@@ -12,7 +13,7 @@ class DataAccess:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
 
             gmail_id TEXT UNIQUE,
-application_key TEXT UNIQUE,
+            application_key TEXT UNIQUE,
             company TEXT,
             position TEXT,
             sender TEXT,
@@ -34,6 +35,7 @@ application_key TEXT UNIQUE,
         self.cursor.execute("""
         INSERT INTO jobs(
             gmail_id,
+            application_key,
             company,
             position,
             sender,
@@ -44,8 +46,8 @@ application_key TEXT UNIQUE,
             subject,
             body_preview
         )
-        VALUES(?,?,?,?,?,?,?,?,?,?)
-        ON CONFLICT(gmail_id) DO UPDATE SET
+        VALUES(?,?,?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(application_key) DO UPDATE SET
             company = excluded.company,
             position = excluded.position,
             sender = excluded.sender,
@@ -58,6 +60,7 @@ application_key TEXT UNIQUE,
         """,
                             (
                                 job.gmail_id,
+                                job.application_key,
                                 job.company,
                                 job.position,
                                 job.sender,

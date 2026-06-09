@@ -124,3 +124,7 @@ class EmailParser:
         position = position.replace("  ", " ")
 
         return position.title()
+
+    @staticmethod
+    def generate_application_key(company, position):
+        return f"{company}_{position}".lower().strip()

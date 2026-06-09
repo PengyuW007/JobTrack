@@ -44,14 +44,6 @@ def main():
 
     service = get_gmail_service()
 
-    # results = service.users().messages().list(
-    #     userId="me",
-    #     q='after:2026/02/10 (application OR applied OR interview OR recruiter OR assessment OR unfortunately OR offer)',
-    #     maxResults=10
-    # ).execute()
-    #
-    # messages = results.get("messages", [])
-
     all_messages = []
     page_token = None
 
@@ -111,9 +103,13 @@ def main():
 
         company = EmailParser.extract_company(sender, subject, body)
         position = EmailParser.extract_position(subject, body)
-
+        application_key = EmailParser.generate_application_key(
+            company,
+            position
+        )
         job = JobApplication(
             msg["id"],
+            application_key,
             company,
             position,
             sender,
