@@ -54,19 +54,47 @@ class EmailClassifier:
     def detect_interview_count(text):
         text = text.lower()
 
-        if (
-                "interview" in text
-                or "speak with you" in text
-                or "spoke with you" in text
-                or "phone screen" in text
-                or "hiring day" in text
-                or "meet with you" in text
-                or "meeting with you" in text
-        ):
-            return 1
+        interview_keywords = [
+            "interview invitation",
+            "invite you to interview",
+            "invited to interview",
+            "schedule an interview",
+            "interview with",
+            "phone interview",
+            "technical interview",
+            "video interview",
+            "onsite interview",
+            "virtual interview",
+            "hiring day",
+            "screening call",
+            "phone screen"
+        ]
 
-        return 0
+        return 1 if any(keyword in text for keyword in interview_keywords) else 0
 
     @staticmethod
     def detect_offer_flag(status):
         return 1 if status == "Offer" else 0
+
+    @staticmethod
+    def is_job_related(text):
+        text = text.lower()
+
+        keywords = [
+            "thank you for applying",
+            "thanks for applying",
+            "application received",
+            "we received your application",
+            "your job application",
+            "indeed application",
+            "interview",
+            "assessment",
+            "coding test",
+            "unfortunately",
+            "not moving forward",
+            "regret to inform you",
+            "offer letter",
+            "talent acquisition"
+        ]
+
+        return any(keyword in text for keyword in keywords)

@@ -5,7 +5,7 @@ from persistence.DataAccess import DataAccess
 from persistence.DataAccessJob import DataAccessJob
 from business.EmailClassifier import EmailClassifier
 from business.AnalyticsService import AnalyticsService
-from gmail.GmailService import get_header, extract_body
+from gmail.GmailService import get_header, extract_body, convert_to_toronto
 from parsers.EmailParser import EmailParser
 
 from google.auth.transport.requests import Request
@@ -43,17 +43,42 @@ def main():
 
     service = get_gmail_service()
 
-    results = service.users().messages().list(
-        userId="me",
-        q='after:2026/02/10 (application OR applied OR interview OR recruiter OR assessment OR unfortunately OR offer)',
-        maxResults=10
-    ).execute()
+    # results = service.users().messages().list(
+    #     userId="me",
+    #     q='after:2026/02/10 (application OR applied OR interview OR recruiter OR assessment OR unfortunately OR offer)',
+    #     maxResults=10
+    # ).execute()
+    #
+    # messages = results.get("messages", [])
 
-    messages = results.get("messages", [])
+    all_messages = []
+    page_token = None
 
-    print(f"Found {len(messages)} emails")
+    while True:
 
-    for msg in messages:
+        results = service.users().messages().list(
+            userId="me",
+            q='after:2026/02/10',
+            maxResults=100,
+            pageToken=page_token
+        ).execute()
+
+        all_messages.extend(
+            results.get("messages", [])
+        )
+
+        page_token = results.get("nextPageToken")
+
+        if not page_token:
+            break
+
+    print(f"Found {len(all_messages)} emails")
+
+    inserted_count = 0
+    total = len(all_messages)
+    for index, msg in enumerate(all_messages, start=1):
+        if index % 10 == 0:
+            print(f"Processed {index}/{total}")
         message = service.users().messages().get(
             userId="me",
             id=msg["id"],
@@ -66,10 +91,14 @@ def main():
         sender = get_header(headers, "From")
         if "pengyuwang777@gmail.com" in sender.lower():
             continue
-        date = get_header(headers, "Date")
+
+        raw_date = get_header(headers, "Date")
+        date = convert_to_toronto(raw_date)
         body = extract_body(message["payload"])
 
         combined_text = subject + " " + body
+        if not EmailClassifier.is_job_related(combined_text):
+            continue
         status = EmailClassifier.detect_status(subject, combined_text)
 
         company = EmailParser.extract_company(sender, subject, body)
@@ -89,12 +118,8 @@ def main():
         )
 
         db.insert_job(job)
-
-        # if "jana" in subject.lower():
-        #     print("=" * 100)
-        #     print(subject)
-        #     print(body[:3000])
-
+        inserted_count += 1
+    print(f"Inserted {inserted_count} job-related emails")
     job_dao = DataAccessJob(db.conn)
 
     all_jobs = job_dao.get_all_jobs()

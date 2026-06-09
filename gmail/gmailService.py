@@ -1,8 +1,23 @@
 import base64
+from email.utils import parsedate_to_datetime
+from zoneinfo import ZoneInfo
 
 
 def get_header(headers, name):
     return next((h["value"] for h in headers if h["name"].lower() == name.lower()), "")
+
+
+def convert_to_toronto(date_string):
+
+    dt = parsedate_to_datetime(date_string)
+
+    toronto_time = dt.astimezone(
+        ZoneInfo("America/Toronto")
+    )
+
+    return toronto_time.strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
 
 
 def extract_body(payload):
