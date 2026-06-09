@@ -3,6 +3,7 @@ import os.path
 from persistence.DataAccess import DataAccess
 from business.EmailClassifier import EmailClassifier
 from gmail.GmailService import get_header, extract_body
+from parsers.EmailParser import EmailParser
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -69,9 +70,11 @@ def main():
         print("Status:", status)
         print("Body Preview:", body[:300])
 
+        company = EmailParser.extract_company(sender)
+
         db.insert_job(
             msg["id"],
-            "",
+            company,
             "",
             sender,
             date,
