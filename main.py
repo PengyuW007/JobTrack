@@ -2,6 +2,7 @@ import os.path
 
 from objects.JobApplication import JobApplication
 from persistence.DataAccess import DataAccess
+from persistence.DataAccessJob import DataAccessJob
 from business.EmailClassifier import EmailClassifier
 from gmail.GmailService import get_header, extract_body
 from parsers.EmailParser import EmailParser
@@ -86,14 +87,24 @@ def main():
             body[:500]
         )
 
-        print(job)
-
         db.insert_job(job)
 
         # if "jana" in subject.lower():
         #     print("=" * 100)
         #     print(subject)
         #     print(body[:3000])
+
+    job_dao = DataAccessJob(db.conn)
+
+    all_jobs = job_dao.get_all_jobs()
+    interview_jobs = job_dao.get_interview_jobs()
+    rejected_jobs = job_dao.get_rejected_jobs()
+    offer_jobs = job_dao.get_offer_jobs()
+
+    print("All:", len(all_jobs))
+    print("Interview:", len(interview_jobs))
+    print("Rejected:", len(rejected_jobs))
+    print("Offer:", len(offer_jobs))
 
     db.close()
 
