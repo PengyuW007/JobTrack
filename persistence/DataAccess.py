@@ -30,18 +30,7 @@ class DataAccess:
 
         self.conn.commit()
 
-    def insert_job(
-            self,
-            gmail_id,
-            company,
-            position,
-            sender,
-            email_date,
-            status,
-            interview_count,
-            offer,
-            subject,
-            body_preview):
+    def insert_job(self, job):
         self.cursor.execute("""
         INSERT INTO jobs(
             gmail_id,
@@ -68,16 +57,16 @@ class DataAccess:
             body_preview = excluded.body_preview
         """,
                             (
-                                gmail_id,
-                                company,
-                                position,
-                                sender,
-                                email_date,
-                                status,
-                                interview_count,
-                                offer,
-                                subject,
-                                body_preview
+                                job.gmail_id,
+                                job.company,
+                                job.position,
+                                job.sender,
+                                job.email_date,
+                                job.status,
+                                job.interview_count,
+                                job.offer,
+                                job.subject,
+                                job.body_preview
                             ))
 
         self.conn.commit()

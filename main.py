@@ -1,5 +1,6 @@
 import os.path
 
+from objects.JobApplication import JobApplication
 from persistence.DataAccess import DataAccess
 from business.EmailClassifier import EmailClassifier
 from gmail.GmailService import get_header, extract_body
@@ -69,10 +70,10 @@ def main():
         combined_text = subject + " " + body
         status = EmailClassifier.detect_status(subject, combined_text)
 
-        company = EmailParser.extract_company(sender)
+        company = EmailParser.extract_company(sender, subject, body)
         position = EmailParser.extract_position(subject, body)
 
-        db.insert_job(
+        job = JobApplication(
             msg["id"],
             company,
             position,
@@ -85,7 +86,9 @@ def main():
             body[:500]
         )
 
-        print("Inserted:", subject)
+        print(job)
+
+        db.insert_job(job)
 
         # if "jana" in subject.lower():
         #     print("=" * 100)

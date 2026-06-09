@@ -1,19 +1,67 @@
 import re
 
+
 class EmailParser:
 
     @staticmethod
-    def extract_company(sender):
+    def extract_company(sender, subject, body):
+
+        # Rule 1
+        # Analyticsmart <no-reply@...>
 
         match = re.match(r"(.+?)\s*<", sender)
 
         if match:
+            company = match.group(1).strip()
+
+            if company.lower() not in [
+                "workable",
+                "marble hiring team"
+            ]:
+                return company
+
+        # Rule 2
+        # Thank you for applying to Jetson Home
+
+        match = re.search(
+            r"thank you for applying to\s+(.+)",
+            subject,
+            re.IGNORECASE
+        )
+
+        if match:
             return match.group(1).strip()
+
+        # Rule 3
+        # Thanks for applying to XXX
+
+        match = re.search(
+            r"thanks for applying to\s+(.+)",
+            subject,
+            re.IGNORECASE
+        )
+
+        if match:
+            return match.group(1).strip()
+
+        # Rule 4
+        # Your job application for XXX with Company
+
+        match = re.search(
+            r"with\s+(.+)$",
+            subject,
+            re.IGNORECASE
+        )
+
+        if match:
+            return match.group(1).strip()
+
+        # Fallback
 
         return sender
 
     @staticmethod
-    def extract_position(subject,body):
+    def extract_position(subject, body):
         subject = subject or ""
         body = body or ""
 
