@@ -8,17 +8,46 @@ class EmailClassifier:
         # Offer should be strict and preferably based on subject / clear phrases
         if (
                 "offer letter" in subject_text
-                or "congratulations" in subject_text
                 or "we would like to offer you" in text
                 or "we are pleased to offer you" in text
                 or "pleased to extend an offer" in text
         ):
             return "Offer"
 
-        if "interview" in text:
+        INTERVIEW_PHRASES = [
+            "interview invitation",
+            "invite you to interview",
+            "invited to interview",
+            "schedule an interview",
+            "technical interview",
+            "phone interview",
+            "video interview",
+            "virtual interview",
+            "phone screen",
+            "screening call"
+        ]
+
+        ASSESSMENT_PHRASES = [
+            "complete the assessment",
+            "assessment invitation",
+            "coding challenge",
+            "coding assessment",
+            "online assessment",
+            "take the assessment",
+            "complete your assessment",
+            "complete the coding test"
+        ]
+
+        if any(
+                phrase in text
+                for phrase in INTERVIEW_PHRASES
+        ):
             return "Interview"
 
-        if "assessment" in text or "coding test" in text:
+        if any(
+                phrase in text
+                for phrase in ASSESSMENT_PHRASES
+        ):
             return "Assessment"
 
         if (

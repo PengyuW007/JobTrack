@@ -75,9 +75,9 @@ def main():
         if index % 10 == 0:
             print(f"Processed {index}/{total}")
 
-        count += 1
-        if count > 50:
-            break
+        # count += 1
+        # if count > 50:
+        #     break
         message = service.users().messages().get(
             userId="me",
             id=msg["id"],
