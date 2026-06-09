@@ -16,7 +16,7 @@ def convert_to_toronto(date_string):
     )
 
     return toronto_time.strftime(
-        "%Y-%m-%d %H:%M:%S"
+        "%Y-%m-%d %H:%M:%S %Z"
     )
 
 

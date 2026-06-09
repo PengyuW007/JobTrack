@@ -12,7 +12,7 @@ class DataAccess:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
 
             gmail_id TEXT UNIQUE,
-
+application_key TEXT UNIQUE,
             company TEXT,
             position TEXT,
             sender TEXT,

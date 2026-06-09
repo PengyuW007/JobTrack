@@ -15,6 +15,7 @@ from googleapiclient.discovery import build
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 
+
 def get_gmail_service():
     creds = None
 
@@ -76,9 +77,15 @@ def main():
 
     inserted_count = 0
     total = len(all_messages)
+
+    count = 0
     for index, msg in enumerate(all_messages, start=1):
         if index % 10 == 0:
             print(f"Processed {index}/{total}")
+
+        count += 1
+        if count > 50:
+            break
         message = service.users().messages().get(
             userId="me",
             id=msg["id"],
@@ -94,6 +101,7 @@ def main():
 
         raw_date = get_header(headers, "Date")
         date = convert_to_toronto(raw_date)
+
         body = extract_body(message["payload"])
 
         combined_text = subject + " " + body
