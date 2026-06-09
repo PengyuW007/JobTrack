@@ -4,6 +4,7 @@ from objects.JobApplication import JobApplication
 from persistence.DataAccess import DataAccess
 from persistence.DataAccessJob import DataAccessJob
 from business.EmailClassifier import EmailClassifier
+from business.AnalyticsService import AnalyticsService
 from gmail.GmailService import get_header, extract_body
 from parsers.EmailParser import EmailParser
 
@@ -105,6 +106,12 @@ def main():
     print("Interview:", len(interview_jobs))
     print("Rejected:", len(rejected_jobs))
     print("Offer:", len(offer_jobs))
+
+    analytics = AnalyticsService(job_dao)
+
+    summary = analytics.get_summary()
+
+    print(summary)
 
     db.close()
 
