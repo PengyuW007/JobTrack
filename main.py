@@ -65,17 +65,15 @@ def main():
         body = extract_body(message["payload"])
 
         combined_text = subject + " " + body
-        status = EmailClassifier.detect_status(combined_text)
-
-        print("Status:", status)
-        print("Body Preview:", body[:300])
+        status = EmailClassifier.detect_status(subject, combined_text)
 
         company = EmailParser.extract_company(sender)
+        position = EmailParser.extract_position(subject, body)
 
         db.insert_job(
             msg["id"],
             company,
-            "",
+            position,
             sender,
             date,
             status,
@@ -86,6 +84,11 @@ def main():
         )
 
         print("Inserted:", subject)
+
+        # if "jana" in subject.lower():
+        #     print("=" * 100)
+        #     print(subject)
+        #     print(body[:3000])
 
     db.close()
 
