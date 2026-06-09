@@ -61,6 +61,8 @@ def main():
 
         subject = get_header(headers, "Subject")
         sender = get_header(headers, "From")
+        if "pengyuwang777@gmail.com" in sender.lower():
+            continue
         date = get_header(headers, "Date")
         body = extract_body(message["payload"])
 
@@ -77,8 +79,8 @@ def main():
             sender,
             date,
             status,
-            1 if status == "Interview" else 0,
-            1 if status == "Offer" else 0,
+            EmailClassifier.detect_interview_count(combined_text),
+            EmailClassifier.detect_offer_flag(status),
             subject,
             body[:500]
         )

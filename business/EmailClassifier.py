@@ -39,6 +39,7 @@ class EmailClassifier:
 
         if (
                 "thank you for applying" in text
+                or "thanks for applying" in text
                 or "application received" in text
                 or "thanks for your application" in text
                 or "we received your application" in text
@@ -48,3 +49,24 @@ class EmailClassifier:
             return "Applied"
 
         return "Unknown"
+
+    @staticmethod
+    def detect_interview_count(text):
+        text = text.lower()
+
+        if (
+                "interview" in text
+                or "speak with you" in text
+                or "spoke with you" in text
+                or "phone screen" in text
+                or "hiring day" in text
+                or "meet with you" in text
+                or "meeting with you" in text
+        ):
+            return 1
+
+        return 0
+
+    @staticmethod
+    def detect_offer_flag(status):
+        return 1 if status == "Offer" else 0
