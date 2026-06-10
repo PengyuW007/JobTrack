@@ -37,6 +37,6 @@ class AnalyticsService:
             "rejected_count": self.get_rejected_count(),
             "interview_count": self.get_interview_count(),
             "offer_count": self.get_offer_count(),
-            "interview_rate": self.get_interview_rate(),
-            "offer_rate": self.get_offer_rate()
+            "interview_rate": f"{self.get_interview_rate()}%",
+            "offer_rate": f"{self.get_offer_rate()}%"
         }
