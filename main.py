@@ -157,12 +157,29 @@ def main():
     print("Offer:", len(offer_jobs))
 
     analytics = AnalyticsService(job_dao)
+    first_job_date = analytics.get_first_application_date()
+    print(first_job_date)
 
     summary = analytics.get_summary()
-
     print(summary)
 
     analytics.print_funnel_report()
+
+    funnel = analytics.get_funnel_data()
+
+    today_display = datetime.now(
+        ZoneInfo("America/Toronto")
+    ).strftime("%Y-%m-%d")
+
+    FunnelChart.show_funnel(
+        applications=funnel["applications"],
+        assessments=funnel["assessments"],
+        interviews=funnel["interviews"],
+        rejected=funnel["rejected"],
+        offers=funnel["offers"],
+        start_date=first_job_date[:10],
+        end_date=today_display
+    )
 
     today = datetime.now(
         ZoneInfo("America/Toronto")
@@ -170,15 +187,6 @@ def main():
 
     db.update_last_sync_date(today)
     print("Last sync date updated:", today)
-
-    funnel = analytics.get_funnel_data()
-    FunnelChart.export_funnel_image(
-        funnel["applications"],
-        funnel["assessments"],
-        funnel["interviews"],
-        funnel["rejected"],
-        funnel["offers"]
-    )
 
     db.close()
 

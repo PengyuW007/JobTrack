@@ -1,11 +1,19 @@
-import plotly.graph_objects as go
-
+import matplotlib.pyplot as plt
+from datetime import datetime
 
 class FunnelChart:
 
     @staticmethod
-    def export_funnel_image(applications, assessments, interviews, rejected, offers):
-        stages = [
+    def show_funnel(
+            applications,
+            assessments,
+            interviews,
+            rejected,
+            offers,
+            start_date,
+            end_date):
+
+        labels = [
             "Applications",
             "Rejected",
             "Assessments",
@@ -16,44 +24,45 @@ class FunnelChart:
         values = [
             applications,
             rejected,
-            interviews,
             assessments,
+            interviews,
             offers
         ]
 
-        fig = go.Figure(
-            go.Bar(
-                x=values,
-                y=stages,
-                orientation="h",
-                text=[
-                    f"{values[i]} ({round(values[i] / applications * 100, 2)}%)"
-                    for i in range(len(values))
-                ],
-                textposition="outside",
-                marker=dict(
-                    color=[
-                        "#1B5E20",
-                        "#C62828",
-                        "#2E7D32",
-                        "#388E3C",
-                        "#1565C0"
-                    ]
-                )
+        percentages = [
+            round(v / applications * 100, 2)
+            if applications > 0 else 0
+            for v in values
+        ]
+
+        plt.figure(figsize=(12, 6))
+
+        bars = plt.barh(
+            labels,
+            values
+        )
+
+        plt.gca().invert_yaxis()
+
+        plt.title(
+            f"JobTrack Recruitment Funnel\n"
+            f"Applications from {start_date} to {end_date}"
+        )
+        plt.xlabel("Applications")
+
+        for i, bar in enumerate(bars):
+
+            if i == 0:
+                label = f"{values[i]}"
+            else:
+                label = f"{values[i]} ({percentages[i]}%)"
+
+            plt.text(
+                bar.get_width() + 2,
+                bar.get_y() + bar.get_height() / 2,
+                label,
+                va="center"
             )
-        )
 
-        fig.update_layout(
-            title="JobTrack Recruitment Funnel",
-            xaxis_title="Count",
-            yaxis_title="",
-            yaxis=dict(autorange="reversed"),
-            width=1200,
-            height=700,
-            paper_bgcolor="white",
-            plot_bgcolor="white",
-            font=dict(size=18),
-            margin=dict(l=180, r=120, t=100, b=80)
-        )
-
-        fig.write_image("jobtrack_funnel.png", scale=2)
+        plt.tight_layout()
+        plt.show()

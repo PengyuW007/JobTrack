@@ -122,3 +122,16 @@ class DataAccessJob:
             subject=row[11],
             body_preview=row[12]
         )
+
+    def get_first_application_date(self):
+        self.cursor.execute("""
+        SELECT MIN(created_date)
+        FROM jobs
+        """)
+
+        row = self.cursor.fetchone()
+
+        if row and row[0]:
+            return row[0]
+
+        return None

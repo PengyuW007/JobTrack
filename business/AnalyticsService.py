@@ -15,6 +15,9 @@ class AnalyticsService:
     def get_offer_count(self):
         return len(self.job_dao.get_offer_jobs())
 
+    def get_first_application_date(self):
+        return self.job_dao.get_first_application_date()
+
     def get_interview_rate(self):
         total = self.get_total_applications()
 
