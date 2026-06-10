@@ -1,5 +1,5 @@
 # JobTrack
-JobTrack is a Python-based job application tracking system that automatically synchronizes job-related emails from Gmail, 
+JobTrack is a Python based job application tracking system that automatically synchronizes job-related emails from Gmail, 
 stores application records in SQLite, analyzes recruitment progress, and generates visual funnel reports.
 
 ## Features
@@ -31,7 +31,7 @@ stores application records in SQLite, analyzes recruitment progress, and generat
 - Generates recruitment funnel charts
 - Exports funnel reports as images
 
-## Installation
+## Installation & API Setup
 
 Clone the repository:
 ````
@@ -45,12 +45,27 @@ python -m venv venv
 Activate environment:
 
 Windows:
-
+````
 venv\Scripts\activate
-
+````
 Install dependencies:
-
+````
 pip install -r requirements.txt
+````
+
+### Gmail API Setup
+1. Create a Google Cloud Project
+2. Enable Gmail API
+3. Create OAuth Desktop Credentials
+4. Download:
+````
+credentials.json
+````
+5. Place it in the project root directory
+6. Run
+````
+python main.py
+````
 
 ## Itinerary
 ````
