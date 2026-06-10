@@ -30,6 +30,13 @@ class DataAccess:
         )
         """)
 
+        self.cursor.execute("""
+        CREATE TABLE IF NOT EXISTS sync_metadata (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            last_sync_date TEXT
+        )
+        """)
+
         self.conn.commit()
 
     def insert_job(self, job):
@@ -98,6 +105,30 @@ END,
                                 job.subject,
                                 job.body_preview
                             ))
+
+        self.conn.commit()
+
+    def get_last_sync_date(self):
+        self.cursor.execute("""
+        SELECT last_sync_date
+        FROM sync_metadata
+        WHERE id = 1
+        """)
+
+        row = self.cursor.fetchone()
+
+        if row:
+            return row[0]
+
+        return None
+
+    def update_last_sync_date(self, sync_date):
+        self.cursor.execute("""
+        INSERT INTO sync_metadata(id, last_sync_date)
+        VALUES(1, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            last_sync_date = excluded.last_sync_date
+        """, (sync_date,))
 
         self.conn.commit()
 

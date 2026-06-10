@@ -8,6 +8,9 @@ from business.AnalyticsService import AnalyticsService
 from gmail.GmailService import get_header, extract_body, convert_to_toronto
 from parsers.EmailParser import EmailParser
 
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -44,6 +47,20 @@ def main():
 
     service = get_gmail_service()
 
+    FULL_REBUILD = False
+
+    if FULL_REBUILD:
+        query = "after:2026/02/10"
+    else:
+        last_sync_date = db.get_last_sync_date()
+
+        if last_sync_date:
+            query = f"after:{last_sync_date}"
+        else:
+            query = "after:2026/02/10"
+
+    print("Gmail query:", query)
+
     all_messages = []
     page_token = None
 
@@ -51,7 +68,7 @@ def main():
 
         results = service.users().messages().list(
             userId="me",
-            q='after:2026/02/10',
+            q=query,
             maxResults=100,
             pageToken=page_token
         ).execute()
@@ -142,6 +159,14 @@ def main():
     summary = analytics.get_summary()
 
     print(summary)
+
+    today = datetime.now(
+        ZoneInfo("America/Toronto")
+    ).strftime("%Y/%m/%d")
+
+    db.update_last_sync_date(today)
+
+    print("Last sync date updated:", today)
 
     db.close()
 
