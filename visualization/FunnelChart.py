@@ -5,37 +5,55 @@ class FunnelChart:
 
     @staticmethod
     def export_funnel_image(applications, assessments, interviews, rejected, offers):
-        no_response = applications - assessments - interviews - rejected - offers
+        stages = [
+            "Applications",
+            "Rejected",
+            "Assessments",
+            "Interviews",
+            "Offers"
+        ]
 
-        fig = go.Figure(data=[go.Sankey(
-            node=dict(
-                pad=20,
-                thickness=20,
-                label=[
-                    f"{applications} Applications",
-                    f"{assessments} Assessments",
-                    f"{interviews} Interviews",
-                    f"{rejected} Rejected",
-                    f"{offers} Offers",
-                    f"{no_response} No Answer / In Progress"
-                ]
-            ),
-            link=dict(
-                source=[0, 0, 0, 0, 0],
-                target=[1, 2, 3, 4, 5],
-                value=[
-                    assessments,
-                    interviews,
-                    rejected,
-                    offers,
-                    no_response
-                ]
+        values = [
+            applications,
+            rejected,
+            interviews,
+            assessments,
+            offers
+        ]
+
+        fig = go.Figure(
+            go.Bar(
+                x=values,
+                y=stages,
+                orientation="h",
+                text=[
+                    f"{values[i]} ({round(values[i] / applications * 100, 2)}%)"
+                    for i in range(len(values))
+                ],
+                textposition="outside",
+                marker=dict(
+                    color=[
+                        "#1B5E20",
+                        "#C62828",
+                        "#2E7D32",
+                        "#388E3C",
+                        "#1565C0"
+                    ]
+                )
             )
-        )])
-
-        fig.update_layout(
-            title_text="Job Search Funnel",
-            font_size=16
         )
 
-        fig.write_image("jobtrack_funnel.png")
+        fig.update_layout(
+            title="JobTrack Recruitment Funnel",
+            xaxis_title="Count",
+            yaxis_title="",
+            yaxis=dict(autorange="reversed"),
+            width=1200,
+            height=700,
+            paper_bgcolor="white",
+            plot_bgcolor="white",
+            font=dict(size=18),
+            margin=dict(l=180, r=120, t=100, b=80)
+        )
+
+        fig.write_image("jobtrack_funnel.png", scale=2)

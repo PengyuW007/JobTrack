@@ -1,4 +1,56 @@
 # JobTrack
+JobTrack is a Python-based job application tracking system that automatically synchronizes job-related emails from Gmail, 
+stores application records in SQLite, analyzes recruitment progress, and generates visual funnel reports.
+
+## Features
+
+### Gmail Synchronization
+
+- Connects to Gmail using Gmail API
+- Reads job-related emails automatically
+- Supports incremental synchronization
+- Avoids duplicate records
+
+### Application Tracking
+
+- Consolidates multiple emails into a single application record
+- Tracks application status changes
+- Stores company, position, sender, subject, and timestamps
+
+### Recruitment Analytics
+
+- Total applications
+- Assessment count
+- Interview count
+- Rejection count
+- Offer count
+- Conversion rates
+
+### Visualization
+
+- Generates recruitment funnel charts
+- Exports funnel reports as images
+
+## Installation
+
+Clone the repository:
+````
+git clone https://github.com/yourusername/JobTrack.git
+cd JobTrack
+````
+Create virtual environment:
+````
+python -m venv venv
+````
+Activate environment:
+
+Windows:
+
+venv\Scripts\activate
+
+Install dependencies:
+
+pip install -r requirements.txt
 
 ## Itinerary
 ````
@@ -10,29 +62,41 @@ Read job application emails
  ↓
 Parse company/job/status/interview information
  ↓
-Update Excel or SQLite database
+Update SQLite database
 ````
 
 ## Tech Stack
 - Python 
-- google-api-python-client 
-- google-auth 
-- pandas 
-- openpyxl 
-- sqlite3 
-- schedule / Windows Task Scheduler
+- Gmail API
+  - google-api-python-client 
+  - google-auth
+- sqlite3
 
 ## Architecture
 ````
-job_email_tracker/
+JobTrack
 │
-├── main.py
-├── gmail_service.py
-├── email_parser.py
-├── tracker.xlsx
-├── token.json
-├── credentials.json
-└── requirements.txt
+├── gmail/
+│   └── Gmail API integration
+│
+├── parsers/
+│   └── Email parsing logic
+│
+├── business/
+│   ├── EmailClassifier
+│   └── AnalyticsService
+│
+├── persistence/
+│   ├── DataAccess
+│   └── DataAccessJob
+│
+├── objects/
+│   └── JobApplication
+│
+├── visualization/
+│   └── FunnelChart
+│
+└── tracker.db
 ````
 
 ## Workflow
