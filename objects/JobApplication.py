@@ -10,6 +10,7 @@ class JobApplication:
             created_date,
             last_updated_date,
             status,
+            assessment_count,
             interview_count,
             offer,
             subject,
@@ -24,6 +25,7 @@ class JobApplication:
         self.created_date = created_date
         self.last_updated_date = last_updated_date
         self.status = status
+        self.assessment_count = assessment_count
         self.interview_count = interview_count
         self.offer = offer
         self.subject = subject

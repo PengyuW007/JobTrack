@@ -40,3 +40,38 @@ class AnalyticsService:
             "interview_rate": f"{self.get_interview_rate()}%",
             "offer_rate": f"{self.get_offer_rate()}%"
         }
+
+    def get_funnel_data(self):
+        return {
+            "applications": self.get_total_applications(),
+            "assessments": self.get_assessment_count(),
+            "interviews": self.get_interview_count(),
+            "rejected": self.get_rejected_count(),
+            "offers": self.get_offer_count()
+        }
+
+    def get_assessment_count(self):
+        return len([
+            job
+            for job in self.job_dao.get_all_jobs()
+            if job.assessment_count > 0
+        ])
+
+    def print_funnel_report(self):
+        funnel = self.get_funnel_data()
+
+        print("=" * 50)
+        print("JOB SEARCH FUNNEL")
+        print("=" * 50)
+
+        print(f"Applications : {funnel['applications']}")
+        print("      ↓")
+        print(f"Assessments  : {funnel['assessments']}")
+        print("      ↓")
+        print(f"Interviews   : {funnel['interviews']}")
+        print("      ↓")
+        print(f"Rejected     : {funnel['rejected']}")
+        print("      ↓")
+        print(f"Offers       : {funnel['offers']}")
+
+        print("=" * 50)

@@ -91,7 +91,7 @@ def main():
     for index, msg in enumerate(all_messages, start=1):
         if index % 10 == 0:
             print(f"Processed {index}/{total}")
-
+        #
         # count += 1
         # if count > 50:
         #     break
@@ -133,6 +133,7 @@ def main():
             date,
             date,
             status,
+            EmailClassifier.detect_assessment_count(combined_text),
             EmailClassifier.detect_interview_count(combined_text),
             EmailClassifier.detect_offer_flag(status),
             subject,
@@ -159,6 +160,8 @@ def main():
     summary = analytics.get_summary()
 
     print(summary)
+
+    analytics.print_funnel_report()
 
     today = datetime.now(
         ZoneInfo("America/Toronto")

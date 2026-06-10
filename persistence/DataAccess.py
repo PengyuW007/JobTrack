@@ -21,7 +21,7 @@ class DataAccess:
             created_date TEXT,
             last_updated_date TEXT,
             status TEXT,
-
+            assessment_count INTEGER DEFAULT 0,
             interview_count INTEGER DEFAULT 0,
             offer INTEGER DEFAULT 0,
 
@@ -50,12 +50,13 @@ class DataAccess:
             created_date,
             last_updated_date,
             status,
+            assessment_count,
             interview_count,
             offer,
             subject,
             body_preview
         )
-        VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(application_key) DO UPDATE SET
             company = excluded.company,
             position = excluded.position,
@@ -86,6 +87,7 @@ class DataAccess:
     THEN excluded.status
     ELSE jobs.status
 END,
+            assessment_count = MAX(jobs.assessment_count, excluded.assessment_count),
             interview_count = MAX(jobs.interview_count, excluded.interview_count),
             offer = MAX(jobs.offer, excluded.offer),
             subject = excluded.subject,
@@ -100,6 +102,7 @@ END,
                                 job.created_date,
                                 job.last_updated_date,
                                 job.status,
+                                job.assessment_count,
                                 job.interview_count,
                                 job.offer,
                                 job.subject,

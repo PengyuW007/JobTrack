@@ -126,3 +126,24 @@ class EmailClassifier:
         ]
 
         return any(keyword in text for keyword in keywords)
+
+    @staticmethod
+    def detect_assessment_count(text):
+
+        text = text.lower()
+
+        assessment_keywords = [
+            "assessment invitation",
+            "complete the assessment",
+            "online assessment",
+            "coding assessment",
+            "coding challenge",
+            "complete your assessment",
+            "take the assessment",
+            "complete the coding test"
+        ]
+
+        return 1 if any(
+            keyword in text
+            for keyword in assessment_keywords
+        ) else 0
