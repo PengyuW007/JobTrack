@@ -114,6 +114,7 @@ def main():
             position,
             sender,
             date,
+            date,
             status,
             EmailClassifier.detect_interview_count(combined_text),
             EmailClassifier.detect_offer_flag(status),

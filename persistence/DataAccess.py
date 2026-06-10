@@ -18,7 +18,8 @@ class DataAccess:
             position TEXT,
             sender TEXT,
 
-            email_date TEXT,
+            created_date TEXT,
+            last_updated_date TEXT,
             status TEXT,
 
             interview_count INTEGER DEFAULT 0,
@@ -39,19 +40,21 @@ class DataAccess:
             company,
             position,
             sender,
-            email_date,
+            created_date,
+            last_updated_date,
             status,
             interview_count,
             offer,
             subject,
             body_preview
         )
-        VALUES(?,?,?,?,?,?,?,?,?,?,?)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(application_key) DO UPDATE SET
             company = excluded.company,
             position = excluded.position,
             sender = excluded.sender,
-            email_date = MIN(jobs.email_date, excluded.email_date),
+            created_date = MIN(jobs.created_date, excluded.created_date),
+            last_updated_date = MAX(jobs.last_updated_date, excluded.last_updated_date),
             status = CASE
     WHEN
         CASE excluded.status
@@ -87,7 +90,8 @@ END,
                                 job.company,
                                 job.position,
                                 job.sender,
-                                job.email_date,
+                                job.created_date,
+                                job.last_updated_date,
                                 job.status,
                                 job.interview_count,
                                 job.offer,

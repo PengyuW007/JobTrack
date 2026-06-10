@@ -15,14 +15,15 @@ class DataAccessJob:
             company,
             position,
             sender,
-            email_date,
+            created_date,
+            last_updated_date,
             status,
             interview_count,
             offer,
             subject,
             body_preview
         FROM jobs
-        ORDER BY email_date DESC
+        ORDER BY created_date DESC
         """)
 
         rows = self.cursor.fetchall()
@@ -36,7 +37,8 @@ class DataAccessJob:
             company,
             position,
             sender,
-            email_date,
+            created_date,
+            last_updated_date,
             status,
             interview_count,
             offer,
@@ -44,7 +46,7 @@ class DataAccessJob:
             body_preview
         FROM jobs
         WHERE status = ?
-        ORDER BY email_date DESC
+        ORDER BY created_date DESC
         """, (status,))
 
         rows = self.cursor.fetchall()
@@ -58,7 +60,8 @@ class DataAccessJob:
             company,
             position,
             sender,
-            email_date,
+            created_date,
+            last_updated_date,
             status,
             interview_count,
             offer,
@@ -66,7 +69,7 @@ class DataAccessJob:
             body_preview
         FROM jobs
         WHERE interview_count > 0
-        ORDER BY email_date DESC
+        ORDER BY created_date DESC
         """)
 
         rows = self.cursor.fetchall()
@@ -83,7 +86,8 @@ class DataAccessJob:
             company,
             position,
             sender,
-            email_date,
+            created_date,
+            last_updated_date,
             status,
             interview_count,
             offer,
@@ -91,7 +95,7 @@ class DataAccessJob:
             body_preview
         FROM jobs
         WHERE offer = 1 OR status = 'Offer'
-        ORDER BY email_date DESC
+        ORDER BY created_date DESC
         """)
 
         rows = self.cursor.fetchall()
@@ -105,10 +109,11 @@ class DataAccessJob:
             company=row[2],
             position=row[3],
             sender=row[4],
-            email_date=row[5],
-            status=row[6],
-            interview_count=row[7],
-            offer=row[8],
-            subject=row[9],
-            body_preview=row[10]
+            created_date=row[5],
+            last_updated_date=row[6],
+            status=row[7],
+            interview_count=row[8],
+            offer=row[9],
+            subject=row[10],
+            body_preview=row[11]
         )
