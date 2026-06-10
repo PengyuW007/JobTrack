@@ -7,6 +7,7 @@ from business.EmailClassifier import EmailClassifier
 from business.AnalyticsService import AnalyticsService
 from gmail.GmailService import get_header, extract_body, convert_to_toronto
 from parsers.EmailParser import EmailParser
+from visualization.FunnelChart import FunnelChart
 
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -168,8 +169,16 @@ def main():
     ).strftime("%Y/%m/%d")
 
     db.update_last_sync_date(today)
-
     print("Last sync date updated:", today)
+
+    funnel = analytics.get_funnel_data()
+    FunnelChart.export_funnel_image(
+        funnel["applications"],
+        funnel["assessments"],
+        funnel["interviews"],
+        funnel["rejected"],
+        funnel["offers"]
+    )
 
     db.close()
 

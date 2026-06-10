@@ -194,3 +194,4 @@ tracker.db
 
 # IDE
 .idea/
+*.png
