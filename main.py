@@ -8,6 +8,7 @@ from business.AnalyticsService import AnalyticsService
 from gmail.GmailService import get_header, extract_body, convert_to_toronto
 from parsers.EmailParser import EmailParser
 from visualization.FunnelChart import FunnelChart
+from visualization.SankeyChart import SankeyChart
 
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -179,6 +180,14 @@ def main():
         offers=funnel["offers"],
         start_date=first_job_date[:10],
         end_date=today_display
+    )
+
+    SankeyChart.show_sankey(
+        funnel["applications"],
+        funnel["assessments"],
+        funnel["interviews"],
+        funnel["rejected"],
+        funnel["offers"]
     )
 
     today = datetime.now(
