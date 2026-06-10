@@ -84,19 +84,18 @@ class EmailClassifier:
         text = text.lower()
 
         interview_keywords = [
-            "interview invitation",
-            "invite you to interview",
-            "invited to interview",
+            "you have been invited to an interview",
+            "you are invited to interview",
+            "we would like to invite you to interview",
+            "we'd like to invite you to interview",
+            "schedule your interview",
             "schedule an interview",
-            "interview with",
-            "phone interview",
-            "technical interview",
-            "video interview",
-            "onsite interview",
-            "virtual interview",
-            "hiring day",
-            "screening call",
-            "phone screen"
+            "scheduled a video interview",
+            "video interview with",
+            "phone interview with",
+            "technical interview with",
+            "interview confirmation",
+            "interview invitation"
         ]
 
         return 1 if any(keyword in text for keyword in interview_keywords) else 0
