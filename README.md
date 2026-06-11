@@ -69,15 +69,15 @@ python main.py
 
 ## Itinerary
 ````
-Python Script
- ↓
 Gmail API
- ↓
-Read job application emails
- ↓
-Parse company/job/status/interview information
- ↓
-Update SQLite database
+  ↓
+Email Parser
+  ↓
+SQLite
+  ↓
+Analytics Service/Email Classifier
+  ↓
+Visualization
 ````
 
 ## Tech Stack
