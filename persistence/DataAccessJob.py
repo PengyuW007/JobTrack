@@ -30,6 +30,36 @@ class DataAccessJob:
         rows = self.cursor.fetchall()
         return [self._row_to_job(row) for row in rows]
 
+    def get_jobs_by_date_range(self, start_date, end_date):
+        """Return applications whose first application date is in the range.
+
+        Dates are YYYY-MM-DD strings.  The comparison is inclusive at both
+        ends; created_date also contains a time and timezone suffix, so only
+        its ISO date prefix is compared.
+        """
+        self.cursor.execute("""
+        SELECT
+            gmail_id,
+            application_key,
+            company,
+            position,
+            sender,
+            created_date,
+            last_updated_date,
+            status,
+            assessment_count,
+            interview_count,
+            offer,
+            subject,
+            body_preview
+        FROM jobs
+        WHERE substr(created_date, 1, 10) BETWEEN ? AND ?
+        ORDER BY created_date DESC
+        """, (start_date, end_date))
+
+        rows = self.cursor.fetchall()
+        return [self._row_to_job(row) for row in rows]
+
     def get_jobs_by_status(self, status):
         self.cursor.execute("""
         SELECT

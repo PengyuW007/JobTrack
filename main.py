@@ -8,8 +8,8 @@ from business.EmailClassifier import EmailClassifier
 from business.AnalyticsService import AnalyticsService
 from gmail.GmailService import get_header, extract_body, convert_to_toronto
 from parsers.EmailParser import EmailParser
+from visualization.DateRangeDialog import DateRangeDialog
 from visualization.FunnelChart import FunnelChart
-from visualization.SankeyChart import SankeyChart
 
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -155,19 +155,30 @@ def main():
     print(f"Inserted {inserted_count} job-related emails")
     job_dao = DataAccessJob(db.conn)
 
-    all_jobs = job_dao.get_all_jobs()
-    interview_jobs = job_dao.get_interview_jobs()
-    rejected_jobs = job_dao.get_rejected_jobs()
-    offer_jobs = job_dao.get_offer_jobs()
+    first_job_date = job_dao.get_first_application_date()
 
-    print("All:", len(all_jobs))
-    print("Interview:", len(interview_jobs))
-    print("Rejected:", len(rejected_jobs))
-    print("Offer:", len(offer_jobs))
+    today_display = datetime.now(
+        ZoneInfo("America/Toronto")
+    ).strftime("%Y-%m-%d")
 
-    analytics = AnalyticsService(job_dao)
-    first_job_date = analytics.get_first_application_date()
-    print(first_job_date)
+    selected_range = DateRangeDialog.select(
+        default_start=first_job_date[:10] if first_job_date else today_display,
+        default_end=today_display
+    )
+
+    today = datetime.now(
+        ZoneInfo("America/Toronto")
+    ).strftime("%Y/%m/%d")
+    db.update_last_sync_date(today)
+    print("Last sync date updated:", today)
+
+    if selected_range is None:
+        print("Report cancelled.")
+        db.close()
+        return
+
+    start_date, end_date = selected_range
+    analytics = AnalyticsService(job_dao, start_date, end_date)
 
     summary = analytics.get_summary()
     print(summary)
@@ -176,34 +187,15 @@ def main():
 
     funnel = analytics.get_funnel_data()
 
-    today_display = datetime.now(
-        ZoneInfo("America/Toronto")
-    ).strftime("%Y-%m-%d")
-
     FunnelChart.show_funnel(
         applications=funnel["applications"],
         assessments=funnel["assessments"],
         interviews=funnel["interviews"],
         rejected=funnel["rejected"],
         offers=funnel["offers"],
-        start_date=first_job_date[:10],
-        end_date=today_display
+        start_date=start_date,
+        end_date=end_date
     )
-
-    SankeyChart.show_sankey(
-        funnel["applications"],
-        funnel["assessments"],
-        funnel["interviews"],
-        funnel["rejected"],
-        funnel["offers"]
-    )
-
-    today = datetime.now(
-        ZoneInfo("America/Toronto")
-    ).strftime("%Y/%m/%d")
-
-    db.update_last_sync_date(today)
-    print("Last sync date updated:", today)
 
     db.close()
 
