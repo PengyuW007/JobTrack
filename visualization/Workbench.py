@@ -92,6 +92,10 @@ class Workbench:
         ttk.Label(box, textvariable=self.job_title, font=("Segoe UI", 10, "bold"), wraplength=330).grid(row=1, column=0, columnspan=2, sticky="w", pady=(10, 2))
         self.lookup_status = tk.StringVar()
         ttk.Label(box, textvariable=self.lookup_status, wraplength=330).grid(row=2, column=0, columnspan=2, sticky="w")
+        self.resume_result = tk.StringVar()
+        ttk.Label(box, textvariable=self.resume_result, wraplength=355).grid(
+            row=3, column=0, columnspan=2, sticky="w", pady=(8, 0)
+        )
         resumes = ttk.LabelFrame(self.left, text="Resumes", padding=10)
         resumes.grid(row=3, column=0, sticky="ew", pady=8)
         resumes.columnconfigure(0, weight=1)
@@ -99,16 +103,12 @@ class Workbench:
         for key, label, width in (("use", "Use", 38), ("name", "Resume", 190), ("updated", "Updated", 75)):
             self.resume_table.heading(key, text=label)
             self.resume_table.column(key, width=width, minwidth=35)
-        self.resume_result = tk.StringVar()
-        ttk.Label(resumes, textvariable=self.resume_result, wraplength=355).grid(
-            row=0, column=0, columnspan=4, sticky="w", pady=(0, 8)
-        )
-        self.resume_table.grid(row=1, column=0, columnspan=4, sticky="ew")
+        self.resume_table.grid(row=0, column=0, columnspan=4, sticky="ew")
         self.resume_table.bind("<Double-1>", lambda _event: self.toggle_resume())
-        ttk.Button(resumes, text="Add", command=self.add_resumes).grid(row=2, column=0, sticky="w", pady=(6, 0))
-        ttk.Button(resumes, text="Replace", command=self.replace_resume).grid(row=2, column=1, pady=(6, 0))
-        ttk.Button(resumes, text="Rename", command=self.rename_resume).grid(row=2, column=2, pady=(6, 0))
-        ttk.Button(resumes, text="Remove", command=self.remove_resume).grid(row=2, column=3, sticky="e", pady=(6, 0))
+        ttk.Button(resumes, text="Add", command=self.add_resumes).grid(row=1, column=0, sticky="w", pady=(6, 0))
+        ttk.Button(resumes, text="Replace", command=self.replace_resume).grid(row=1, column=1, pady=(6, 0))
+        ttk.Button(resumes, text="Rename", command=self.rename_resume).grid(row=1, column=2, pady=(6, 0))
+        ttk.Button(resumes, text="Remove", command=self.remove_resume).grid(row=1, column=3, sticky="e", pady=(6, 0))
         ttk.Label(self.left, text="Application history", font=("Segoe UI", 10, "bold")).grid(row=4, column=0, sticky="w", pady=(10, 4))
         self.results = ttk.Treeview(self.left, columns=("company", "position", "date"), show="headings", height=4)
         for key, label, width in (("company", "Company", 90), ("position", "Role", 145), ("date", "Applied", 85)):
