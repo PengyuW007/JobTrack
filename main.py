@@ -1,5 +1,6 @@
 import os.path
 import os
+from email.utils import parseaddr
 
 from objects.JobApplication import JobApplication
 from persistence.DataAccess import DataAccess
@@ -56,6 +57,7 @@ def synchronize_gmail():
     try:
         sync_started = datetime.now(ZoneInfo("America/Toronto")).strftime("%Y/%m/%d")
         service = get_gmail_service()
+        account_email = service.users().getProfile(userId="me").execute().get("emailAddress", "").casefold()
 
         # One full history pass supplies evidence missing from legacy 500-character previews.
         db.conn.execute("CREATE TABLE IF NOT EXISTS evidence_metadata (id INTEGER PRIMARY KEY, completed INTEGER, classifier_version INTEGER DEFAULT 1)")
@@ -116,7 +118,7 @@ def synchronize_gmail():
 
             subject = get_header(headers, "Subject")
             sender = get_header(headers, "From")
-            if "pengyuwang777@gmail.com" in sender.lower():
+            if account_email and parseaddr(sender)[1].casefold() == account_email:
                 continue
 
             raw_date = get_header(headers, "Date")

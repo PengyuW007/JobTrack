@@ -15,22 +15,15 @@ from business.ResumeAdvisor import recommend
 from persistence.DataAccessJob import DataAccessJob
 from visualization.DateRangeDialog import DateRangeDialog
 
-MODEL_OPTIONS = {
-    "GPT-5.6 Sol (Best quality)": "gpt-5.6-sol",
-    "GPT-5.6 Terra (Recommended)": "gpt-5.6-terra",
-    "GPT-5.6 Luna (Lower cost)": "gpt-5.6-luna",
-    "Local assessment": "local",
-}
 DEFAULT_START_DATE = "2026-02-10"
 
 
 def format_assessment(result):
     stars = "★" * max(1, min(5, round(result["score"] / 2)))
-    source = f"AI assessment · {result.get('model', '')}".rstrip(" ·") if result["source"] == "AI" else "Local assessment"
     return (
         f"Recommended: {result['file']}\n"
         f"Match: {stars}  {result['score']:.1f}/10\n"
-        f"{source}"
+        "Local assessment"
     )
 
 
@@ -88,14 +81,11 @@ class Workbench:
         box.grid(row=2, column=0, sticky="nsew", pady=8)
         box.columnconfigure(0, weight=1)
         box.rowconfigure(5, weight=1)
-        self.model_choice = tk.StringVar(value="Local assessment")
-        self.db.set_setting("assessment_model", "local")
         model_row = ttk.Frame(box)
         model_row.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 7))
         model_row.columnconfigure(0, weight=1)
         self.model_status = tk.StringVar()
         ttk.Label(model_row, textvariable=self.model_status, wraplength=255).grid(row=0, column=0, sticky="w")
-        ttk.Button(model_row, text="Upgrade…", command=self.configure_ai).grid(row=0, column=1, padx=(6, 0))
         self.update_model_status()
         self.url = tk.StringVar()
         entry = ttk.Entry(box, textvariable=self.url)
@@ -158,34 +148,8 @@ class Workbench:
         self.canvas = FigureCanvasTkAgg(self.figure, master=self.right)
         self.canvas.get_tk_widget().grid(row=1, column=0, sticky="nsew")
 
-    def selected_model(self):
-        return MODEL_OPTIONS[self.model_choice.get()]
-
     def update_model_status(self, result=None):
         self.model_status.set("Basic version · Local assessment")
-
-    def change_model(self, _event=None):
-        self.db.set_setting("assessment_model", self.selected_model())
-        self.update_model_status()
-        if self.posting and self.posting.description and self.resume_paths:
-            self.start_resume_match()
-
-    def configure_ai(self):
-        messagebox.showinfo(
-            "Upgrade · Coming soon",
-            "You are using the Basic version.\n\n"
-            "Basic includes local resume matching and a simple score.\n\n"
-            "The upgrade is in development and will add:\n"
-            "• Detailed match analytics\n"
-            "• Resume modification advice\n"
-            "• Application priority\n"
-            "• Access to newer, more accurate AI models",
-            parent=self.root,
-        )
-
-    def configure_api_key(self):
-        """Compatibility entry point for callers from older UI code."""
-        self.configure_ai()
 
     def set_analysis(self, text):
         self.analysis_text.configure(state="normal")
@@ -366,11 +330,10 @@ class Workbench:
     def start_resume_match(self):
         self.set_analysis("Comparing resumes…")
         job_context = f"{self.posting.position}\n{self.posting.description}"
-        model = self.selected_model()
-        threading.Thread(target=self._resume_worker, args=(job_context, tuple(self.resume_paths), model), daemon=True).start()
+        threading.Thread(target=self._resume_worker, args=(job_context, tuple(self.resume_paths)), daemon=True).start()
 
-    def _resume_worker(self, description, paths, model):
-        result, errors = recommend(description, paths, model)
+    def _resume_worker(self, description, paths):
+        result, errors = recommend(description, paths, "local")
         self.events.put(("resume", (result, errors)))
 
     def show_details(self, _event=None):

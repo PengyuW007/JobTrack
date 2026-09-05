@@ -16,11 +16,11 @@ JobTrack is currently a source-code download, not a one-click installer. If you 
 Help me install and start this JobTrack project. I am not a programmer.
 Ask whether I use Windows or macOS, then give me one step at a time.
 Wait for me after every step and help me understand any error message.
-Never ask me to share credentials.json, token.json, an API key, my database, or my resumes.
+Never ask me to share credentials.json, token.json, my database, or my resumes.
 Use the installation instructions in README.md from this repository.
 ```
 
-The assistant can explain each click and command, but it cannot safely receive your passwords, OAuth files, API keys, application database, or resumes.
+The assistant can explain each click and command, but it cannot safely receive your passwords, OAuth files, application database, or resumes.
 
 ### What a new user needs to do
 
@@ -39,7 +39,7 @@ Detailed Windows and macOS instructions appear below. Complete the steps for you
 
 - Shows Applications, Rejected, Assessments, Interviews, and Offers.
 - Supports custom From and To dates plus 7D, 30D, 90D, and All shortcuts.
-- Uses February 10, 2026 as the initial From date for the current personal configuration.
+- Uses February 10, 2026 as the initial From date.
 - Applies the selected date range to the chart only.
 
 ### Gmail application history
@@ -85,25 +85,13 @@ Match: ★★★  6.1/10
 Local assessment
 ```
 
-The local assessment is free and does not require an API key. It uses deterministic skill and qualification rules, so its score is an estimate and may be less accurate than an AI assessment.
+The local assessment uses deterministic skill and qualification rules. Its score is an estimate and may be less accurate for unusual roles or terminology.
 
-### Basic version notice
+### Basic version
 
-The current public version is the **Basic version**. The workbench displays `Basic version · Local assessment` above Job check. Select **Upgrade…** to see which upgraded features are in development.
+The current public version is the **Basic version**. The workbench displays `Basic version · Local assessment` above Job check.
 
-The Basic version does not ask the user to choose a model or enter an API key. Its resume recommendation is produced locally on the user's computer.
-
-## Planned upgraded analysis
-
-A future upgraded edition may add newer AI models and these fields to the visible result:
-
-- `Modify`: whether the recommended resume should be tailored before applying
-- `Priority`: an application decision such as `Tier 1 — Apply` or `Tier 3 — Skip`
-- `Analytics`: a short explanation of strong matches, missing requirements, and material risks
-
-The upgrade is still in development and is not available for purchase or activation.
-
-These fields are not displayed in the current basic result panel.
+Resume analysis stays on the user's computer.
 
 ## Requirements
 
@@ -159,7 +147,7 @@ To create a desktop shortcut:
 2. Enter the following target and replace the project path when necessary:
 
 ```text
-C:\Windows\System32\wscript.exe "D:\4 - Projects\2026\JobTrack\Start JobTrack.vbs"
+C:\Windows\System32\wscript.exe "C:\Users\YourName\JobTrack\Start JobTrack.vbs"
 ```
 
 3. Name the shortcut `JobTrack`.
@@ -242,7 +230,7 @@ The following content must remain local and is excluded by `.gitignore`:
 - PDF and DOCX resumes
 - files inside `resumes/` or `private/`
 
-Never commit API keys, OAuth secrets, Gmail content, application records, or personal resumes. The Basic version does not request or use an OpenAI API key.
+Never commit OAuth secrets, Gmail content, application records, or personal resumes. The Basic version keeps resume analysis local.
 
 ## Data limitations
 
@@ -287,8 +275,7 @@ JobTrack/
 - Python, Tkinter, SQLite, and Matplotlib
 - Gmail API and Google OAuth
 - Requests and Selenium
-- pypdf and keyring
-- A reserved OpenAI integration for upgraded analysis that is not enabled in the Basic version
+- pypdf
 
 ## Run tests
 

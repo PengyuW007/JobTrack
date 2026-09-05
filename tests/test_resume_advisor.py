@@ -21,24 +21,6 @@ class ResumeAdvisorTests(unittest.TestCase):
         self.assertNotIn('Priority:', output)
         self.assertNotIn('Missing required experience.', output)
 
-    def test_ai_assessment_names_the_actual_model(self):
-        output = format_assessment({
-            'file': 'FullStack.pdf', 'score': 8.1,
-            'modification_needed': False, 'recommendation': 'Apply',
-            'summary': 'Strong match.', 'source': 'AI', 'model': 'gpt-5.6-terra'
-        })
-        self.assertIn('AI assessment · gpt-5.6-terra', output)
-
-    def test_api_failure_details_are_not_part_of_basic_results(self):
-        output = format_assessment({
-            'file': 'QA.pdf', 'score': 4.9,
-            'modification_needed': False, 'recommendation': 'Skip',
-            'summary': 'Local fallback.', 'source': 'Local match',
-            'api_error': 'OpenAI API: Model access denied.'
-        })
-        self.assertIn('Local assessment', output)
-        self.assertNotIn('OpenAI API: Model access denied.', output)
-
     def test_local_resume_recommendation(self):
         with tempfile.TemporaryDirectory() as folder:
             backend = Path(folder, 'backend.txt')
@@ -88,6 +70,17 @@ class ResumeAdvisorTests(unittest.TestCase):
             developers, agile teams, SQL services, and full-stack applications.'''
             result, _ = recommend(job, [full_stack, qa], 'local')
             self.assertEqual(result['file'], 'QA_Resume.txt')
+
+    def test_non_technical_job_selects_specialized_resume(self):
+        with tempfile.TemporaryDirectory() as folder:
+            developer = Path(folder, 'Software_Resume.txt')
+            marketing = Path(folder, 'Marketing_Resume.txt')
+            developer.write_text('Python Java SQL Docker', encoding='utf-8')
+            marketing.write_text('Content marketing social media CRM lead generation', encoding='utf-8')
+            job = '''Digital Marketing Specialist
+            Plan content marketing campaigns, manage social media, and use CRM analytics.'''
+            result, _ = recommend(job, [developer, marketing], 'local')
+            self.assertEqual(result['file'], 'Marketing_Resume.txt')
 
 
 if __name__ == '__main__':

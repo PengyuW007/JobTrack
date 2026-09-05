@@ -1,15 +1,20 @@
-import json
-import os
 import re
 import zipfile
 from pathlib import Path
 
-import requests
-
-KEYRING_SERVICE = "JobTrack OpenAI"
-KEYRING_USER = "api-key"
-
-SKILLS = {"python", "java", "javascript", "typescript", "react", "angular", "vue", "sql", "aws", "azure", "gcp", "docker", "kubernetes", "terraform", "spark", "pandas", "machine learning", "data analysis", "power bi", "tableau", "excel", "salesforce", "node", "c++", "c#", ".net", "rest", "graphql", "git", "linux", "agile", "scrum", "leadership", "ci/cd", "devops", "domain-driven design", "design patterns"}
+SKILLS = {
+    "account management", "accounting", "agile", "analytics", "aws", "azure",
+    "budgeting", "business analysis", "c#", "c++", "care planning", "case management",
+    "ci/cd", "clinical", "communication", "content marketing", "crm", "customer service",
+    "data analysis", "design patterns", "digital marketing", "docker", "domain-driven design",
+    "e-commerce", "excel", "financial analysis", "gcp", "git", "graphic design", "healthcare",
+    "human resources", "inventory", "java", "javascript", "kubernetes", "lead generation",
+    "leadership", "linux", "machine learning", "marketing", "microsoft office", ".net", "node",
+    "operations", "pandas", "patient care", "payroll", "power bi", "project management",
+    "python", "react", "recruiting", "rest", "sales", "salesforce", "scheduling", "scrum",
+    "social media", "spark", "sql", "supply chain", "tableau", "teaching", "terraform",
+    "typescript", "user research", "ux", "vue", "writing",
+}
 
 SPECIALIZATIONS = {
     "full stack": ("fullstack", "full stack", "full-stack"),
@@ -20,6 +25,15 @@ SPECIALIZATIONS = {
         "test engineer", "software engineer in test", "sdet", "tester",
     ),
     "data": ("data", "analytics"),
+    "finance": ("finance", "financial", "accounting", "bookkeeper"),
+    "marketing": ("marketing", "content", "seo", "social media"),
+    "sales": ("sales", "account executive", "business development"),
+    "operations": ("operations", "supply chain", "logistics", "procurement"),
+    "human resources": ("human resources", "hr", "recruiter", "talent acquisition"),
+    "healthcare": ("healthcare", "nurse", "clinical", "patient care"),
+    "design": ("designer", "design", "ux", "ui"),
+    "customer service": ("customer service", "customer success", "support specialist"),
+    "project management": ("project manager", "program manager", "project management"),
 }
 
 
@@ -52,46 +66,6 @@ def read_resume(path):
             raise ValueError("PDF support requires: pip install pypdf") from error
         return "\n".join(page.extract_text() or "" for page in PdfReader(path).pages)
     raise ValueError("Supported formats: PDF, DOCX, TXT, MD")
-
-
-def get_api_key():
-    environment_key = os.getenv("OPENAI_API_KEY")
-    if environment_key:
-        return environment_key
-    try:
-        import keyring
-        return keyring.get_password(KEYRING_SERVICE, KEYRING_USER)
-    except Exception:
-        return None
-
-
-def save_api_key(api_key):
-    import keyring
-    if api_key:
-        keyring.set_password(KEYRING_SERVICE, KEYRING_USER, api_key)
-    else:
-        try:
-            keyring.delete_password(KEYRING_SERVICE, KEYRING_USER)
-        except keyring.errors.PasswordDeleteError:
-            pass
-
-
-def api_error_message(response=None, error=None):
-    if response is not None:
-        try:
-            detail = response.json().get("error", {})
-            message = detail.get("message")
-            code = detail.get("code") or detail.get("type")
-            if message:
-                return f"OpenAI API: {message}" + (f" ({code})" if code and code not in message else "")
-        except (ValueError, AttributeError):
-            pass
-        return f"OpenAI API request failed (HTTP {response.status_code})."
-    if isinstance(error, requests.Timeout):
-        return "OpenAI API request timed out. Check the network and try again."
-    if isinstance(error, requests.ConnectionError):
-        return "Could not reach the OpenAI API. Check the network or firewall."
-    return f"OpenAI API response could not be read: {error}"
 
 
 def local_recommendation(description, resumes):
@@ -156,60 +130,6 @@ def local_recommendation(description, resumes):
     }
 
 
-def ai_recommendation(description, resumes, model=None):
-    fallback = local_recommendation(description, resumes)
-    api_key = get_api_key()
-    model = model or os.getenv("JOBTRACK_OPENAI_MODEL", "gpt-5.6-terra")
-    if not api_key or model == "local":
-        return fallback
-    resume_text = "\n\n".join(f"RESUME: {Path(path).name}\n{text[:12000]}" for path, text in resumes)
-    schema = {
-        "type": "object",
-        "properties": {
-            "file": {"type": "string"},
-            "score": {"type": "number", "minimum": 0, "maximum": 10},
-            "modification_needed": {"type": "boolean"},
-            "recommendation": {"type": "string", "enum": ["Apply", "Consider", "Skip"]},
-            "priority": {"type": "string", "enum": ["Tier 1+ — Definitely Apply", "Tier 1 — Apply", "Tier 2 — Consider", "Tier 3 — Skip"]},
-            "summary": {"type": "string"},
-        },
-        "required": ["file", "score", "modification_needed", "recommendation", "priority", "summary"],
-        "additionalProperties": False,
-    }
-    payload = {
-        "model": model,
-        "store": False,
-        "input": [
-            {"role": "developer", "content": "Choose the strongest resume and assess whether the candidate should apply. Score job fit from 0 to 10 using all supplied evidence, separating required qualifications from preferred assets. Do not penalize missing years unless the job states a minimum. Recommend Apply, Consider, or Skip and assign a matching priority tier. Set modification_needed only when tailoring could materially improve a viable application. Summarize the strongest matches and material gaps in at most 60 words."},
-            {"role": "user", "content": f"JOB DESCRIPTION:\n{description[:18000]}\n\n{resume_text}"},
-        ],
-        "text": {"format": {"type": "json_schema", "name": "resume_choice", "strict": True, "schema": schema}},
-    }
-    response = None
-    try:
-        response = requests.post("https://api.openai.com/v1/responses", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json=payload, timeout=45)
-        response.raise_for_status()
-        data = response.json()
-        output_text = data.get("output_text")
-        if not output_text:
-            output_text = next(
-                part["text"]
-                for item in data.get("output", [])
-                for part in item.get("content", [])
-                if part.get("type") == "output_text"
-            )
-        result = json.loads(output_text)
-        if result.get("file") not in {Path(path).name for path, _ in resumes}:
-            return fallback
-        result["score"] = round(float(result["score"]), 1)
-        result["source"] = "AI"
-        result["model"] = model
-        return result
-    except (requests.RequestException, KeyError, ValueError, TypeError, StopIteration, json.JSONDecodeError) as error:
-        fallback["api_error"] = api_error_message(response, error)
-        return fallback
-
-
 def recommend(description, paths, model=None):
     readable, errors = [], []
     for path in paths:
@@ -219,4 +139,4 @@ def recommend(description, paths, model=None):
                 readable.append((path, text))
         except (OSError, ValueError, zipfile.BadZipFile) as error:
             errors.append(f"{Path(path).name}: {error}")
-    return (ai_recommendation(description, readable, model) if readable else None), errors
+    return (local_recommendation(description, readable) if readable else None), errors
