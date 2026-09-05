@@ -227,8 +227,8 @@ class Workbench:
     def _fetch_worker(self, url):
         try:
             posting = fetch_posting(url)
-        except Exception as error:
-            posting = Posting(url, warning=f"Could not read this job page: {error}")
+        except Exception:
+            posting = Posting(url, warning="Could not analyze this job URL")
         self.events.put(("posting", posting))
 
     def show_posting(self, posting):

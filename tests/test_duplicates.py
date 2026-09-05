@@ -2,8 +2,9 @@ import json
 import sqlite3
 import unittest
 from types import SimpleNamespace
+from unittest.mock import patch
 
-from business.DuplicateService import DuplicateService, Posting, canonical_url, parse_posting
+from business.DuplicateService import DuplicateService, Posting, canonical_url, fetch_posting, parse_posting
 from persistence.DataAccess import DataAccess
 from persistence.DataAccessJob import DataAccessJob
 from business.AnalyticsService import AnalyticsService
@@ -88,6 +89,13 @@ class DuplicateTests(unittest.TestCase):
         self.assertEqual(result.company, 'Acme')
         self.assertIn('Work & build', result.description)
         self.assertTrue(parse_posting('https://example.com/job', '<title>Sign in</title>').warning)
+
+    def test_blocked_job_board_uses_browser_fallback(self):
+        url = 'https://ca.indeed.com/viewjob?jk=abc123'
+        browser_result = Posting(url, 'Acme', 'Engineer', 'Build software')
+        with patch('business.DuplicateService._fetch_direct', return_value=Posting(url, warning='blocked')), \
+                patch('business.DuplicateService._fetch_with_browser', return_value=browser_result):
+            self.assertEqual(fetch_posting(url).position, 'Engineer')
 
 
 if __name__ == '__main__':

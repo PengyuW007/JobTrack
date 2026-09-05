@@ -118,7 +118,7 @@ def parse_posting(url, source):
     return Posting(url, warning='This page could not be parsed automatically.')
 
 
-def fetch_posting(url):
+def _fetch_direct(url):
     canonical_url(url)  # Validate without changing the actual requested URL.
     current = url.strip()
     for _ in range(6):
@@ -140,6 +140,46 @@ def fetch_posting(url):
                     raise ValueError('The job page is too large to parse.')
             return parse_posting(url, chunks.decode(response.encoding or 'utf-8', errors='replace'))
     raise ValueError('The job URL redirects too many times.')
+
+
+def _fetch_with_browser(url):
+    from selenium import webdriver
+    from selenium.webdriver.support.ui import WebDriverWait
+
+    options = webdriver.ChromeOptions()
+    options.add_argument('--disable-gpu')
+    options.add_argument('--window-size=1280,1000')
+    options.add_argument('--lang=en-CA')
+    options.add_argument('--log-level=3')
+    driver = webdriver.Chrome(options=options)
+    try:
+        driver.minimize_window()
+        driver.set_page_load_timeout(25)
+        driver.get(url)
+        WebDriverWait(driver, 10).until(
+            lambda active: active.execute_script('return document.readyState') == 'complete'
+        )
+        return parse_posting(url, driver.page_source)
+    finally:
+        driver.quit()
+
+
+def fetch_posting(url):
+    canonical_url(url)
+    host = (urlsplit(url).hostname or '').lower()
+    try:
+        posting = _fetch_direct(url)
+        if posting.position or not host.endswith(('indeed.com', 'linkedin.com')):
+            return posting
+    except requests.RequestException:
+        posting = None
+    try:
+        browser_posting = _fetch_with_browser(url)
+        if browser_posting.position:
+            return browser_posting
+    except Exception:
+        pass
+    return posting or Posting(url, warning='This job board blocked automatic access.')
 
 
 class DuplicateService:
