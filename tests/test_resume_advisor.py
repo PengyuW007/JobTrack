@@ -4,9 +4,21 @@ from pathlib import Path
 from unittest.mock import patch
 
 from business.ResumeAdvisor import recommend
+from visualization.Workbench import format_assessment
 
 
 class ResumeAdvisorTests(unittest.TestCase):
+    def test_compact_assessment_contains_every_decision(self):
+        output = format_assessment({
+            'file': 'FullStack.pdf', 'score': 4.9,
+            'modification_needed': False, 'recommendation': 'Skip',
+            'summary': 'Missing required experience.', 'source': 'Local match'
+        })
+        self.assertEqual(len(output.splitlines()), 5)
+        self.assertIn('Modify: No', output)
+        self.assertIn('Decision: SKIP', output)
+        self.assertIn('Local assessment', output)
+
     def test_local_resume_recommendation(self):
         with tempfile.TemporaryDirectory() as folder:
             backend = Path(folder, 'backend.txt')

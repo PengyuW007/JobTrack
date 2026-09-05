@@ -16,6 +16,19 @@ from persistence.DataAccessJob import DataAccessJob
 from visualization.DateRangeDialog import DateRangeDialog
 
 
+def format_assessment(result):
+    stars = "★" * max(1, min(5, round(result["score"] / 2)))
+    modification = "Yes" if result["modification_needed"] else "No"
+    source = "AI assessment" if result["source"] == "AI" else "Local assessment"
+    return (
+        f"Recommended: {result['file']}\n"
+        f"Match: {stars}  {result['score']:.1f}/10  ·  Modify: {modification}\n"
+        f"Decision: {result['recommendation'].upper()}\n"
+        f"{result['summary']}\n"
+        f"{source}"
+    )
+
+
 class Workbench:
     def __init__(self, db, synchronize=None):
         self.db, self.dao = db, DataAccessJob(db.conn)
@@ -23,8 +36,8 @@ class Workbench:
         self.events, self.resume_paths, self.matches, self.posting = queue.Queue(), [], [], None
         self.root = tk.Tk()
         self.root.title("JobTrack")
-        self.root.geometry("1180x720")
-        self.root.minsize(960, 620)
+        self.root.geometry("1180x900")
+        self.root.minsize(960, 700)
         self.root.columnconfigure(0, minsize=390)
         self.root.columnconfigure(1, weight=1)
         self.root.rowconfigure(0, weight=1)
@@ -82,7 +95,7 @@ class Workbench:
         resumes = ttk.LabelFrame(self.left, text="Resumes", padding=10)
         resumes.grid(row=3, column=0, sticky="ew", pady=8)
         resumes.columnconfigure(0, weight=1)
-        self.resume_table = ttk.Treeview(resumes, columns=("use", "name", "updated"), show="headings", height=4)
+        self.resume_table = ttk.Treeview(resumes, columns=("use", "name", "updated"), show="headings", height=3)
         for key, label, width in (("use", "Use", 38), ("name", "Resume", 190), ("updated", "Updated", 75)):
             self.resume_table.heading(key, text=label)
             self.resume_table.column(key, width=width, minwidth=35)
@@ -93,9 +106,9 @@ class Workbench:
         ttk.Button(resumes, text="Rename", command=self.rename_resume).grid(row=1, column=2, pady=(6, 0))
         ttk.Button(resumes, text="Remove", command=self.remove_resume).grid(row=1, column=3, sticky="e", pady=(6, 0))
         self.resume_result = tk.StringVar()
-        ttk.Label(resumes, textvariable=self.resume_result, wraplength=330).grid(row=2, column=0, columnspan=4, sticky="w", pady=(8, 0))
+        ttk.Label(resumes, textvariable=self.resume_result, wraplength=355).grid(row=2, column=0, columnspan=4, sticky="w", pady=(8, 0))
         ttk.Label(self.left, text="Application history", font=("Segoe UI", 10, "bold")).grid(row=4, column=0, sticky="w", pady=(10, 4))
-        self.results = ttk.Treeview(self.left, columns=("company", "position", "date"), show="headings", height=7)
+        self.results = ttk.Treeview(self.left, columns=("company", "position", "date"), show="headings", height=4)
         for key, label, width in (("company", "Company", 90), ("position", "Role", 145), ("date", "Applied", 85)):
             self.results.heading(key, text=label)
             self.results.column(key, width=width, minwidth=55)
@@ -288,15 +301,7 @@ class Workbench:
                 elif kind == "resume":
                     result, errors = value
                     if result:
-                        stars = "★" * max(1, min(5, round(result["score"] / 2)))
-                        modification = "Yes" if result["modification_needed"] else "No"
-                        self.resume_result.set(
-                            f"Recommended Resume\n{result['file']}\n\n"
-                            f"Match\n{stars}  {result['score']:.1f}/10\n\n"
-                            f"Modification Needed\n{modification}\n\n"
-                            f"Recommendation\n{result['recommendation']} — {result['summary']}\n\n"
-                            f"{result['source']} assessment"
-                        )
+                        self.resume_result.set(format_assessment(result))
                     else:
                         self.resume_result.set(errors[0] if errors else "No readable resumes found")
                 else:
