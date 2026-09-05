@@ -183,6 +183,11 @@ cython_debug/
 # OAuth
 credentials.json
 token.json
+credentials*.json
+client_secret*.json
+token*.json
+.env
+.env.*
 
 # Python
 venv/
@@ -191,6 +196,14 @@ __pycache__/
 
 # Database
 tracker.db
+*.sqlite
+*.sqlite3
+
+# Personal resumes and private user data
+resumes/
+private/
+*.pdf
+*.docx
 
 # IDE
 .idea/

@@ -11,13 +11,13 @@ from matplotlib.figure import Figure
 
 from business.AnalyticsService import AnalyticsService
 from business.DuplicateService import DuplicateService, Posting, fetch_posting
-from business.ResumeAdvisor import get_api_key, recommend, save_api_key
+from business.ResumeAdvisor import recommend
 from persistence.DataAccessJob import DataAccessJob
 from visualization.DateRangeDialog import DateRangeDialog
 
 MODEL_OPTIONS = {
+    "GPT-5.6 Sol (Best quality)": "gpt-5.6-sol",
     "GPT-5.6 Terra (Recommended)": "gpt-5.6-terra",
-    "GPT-6 Astra (Best quality)": "gpt-6-astra",
     "GPT-5.6 Luna (Lower cost)": "gpt-5.6-luna",
     "Local assessment": "local",
 }
@@ -26,13 +26,10 @@ DEFAULT_START_DATE = "2026-02-10"
 
 def format_assessment(result):
     stars = "★" * max(1, min(5, round(result["score"] / 2)))
-    modification = "Yes" if result["modification_needed"] else "No"
     source = f"AI assessment · {result.get('model', '')}".rstrip(" ·") if result["source"] == "AI" else "Local assessment"
     return (
         f"Recommended: {result['file']}\n"
-        f"Match: {stars}  {result['score']:.1f}/10  ·  Modify: {modification}\n"
-        f"Priority: {result.get('priority', result['recommendation'])}\n"
-        f"{result['summary']}\n"
+        f"Match: {stars}  {result['score']:.1f}/10\n"
         f"{source}"
     )
 
@@ -90,18 +87,14 @@ class Workbench:
         box = ttk.LabelFrame(self.left, text="Job check", padding=10)
         box.grid(row=2, column=0, sticky="ew", pady=8)
         box.columnconfigure(0, weight=1)
-        saved_model = self.db.get_setting("assessment_model", "gpt-5.6-terra")
-        selected_label = next((label for label, model in MODEL_OPTIONS.items() if model == saved_model), next(iter(MODEL_OPTIONS)))
+        self.model_choice = tk.StringVar(value="Local assessment")
+        self.db.set_setting("assessment_model", "local")
         model_row = ttk.Frame(box)
         model_row.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 7))
-        ttk.Label(model_row, text="Model").grid(row=0, column=0, sticky="w")
-        self.model_choice = tk.StringVar(value=selected_label)
-        self.model_selector = ttk.Combobox(model_row, textvariable=self.model_choice, values=list(MODEL_OPTIONS), state="readonly", width=28)
-        self.model_selector.grid(row=0, column=1, padx=(8, 0), sticky="ew")
-        self.model_selector.bind("<<ComboboxSelected>>", self.change_model)
-        ttk.Button(model_row, text="API Key…", command=self.configure_api_key).grid(row=0, column=2, padx=(6, 0))
+        model_row.columnconfigure(0, weight=1)
         self.model_status = tk.StringVar()
-        ttk.Label(model_row, textvariable=self.model_status, wraplength=330).grid(row=1, column=0, columnspan=2, sticky="w", pady=(3, 0))
+        ttk.Label(model_row, textvariable=self.model_status, wraplength=255).grid(row=0, column=0, sticky="w")
+        ttk.Button(model_row, text="Upgrade…", command=self.configure_ai).grid(row=0, column=1, padx=(6, 0))
         self.update_model_status()
         self.url = tk.StringVar()
         entry = ttk.Entry(box, textvariable=self.url)
@@ -159,17 +152,7 @@ class Workbench:
         return MODEL_OPTIONS[self.model_choice.get()]
 
     def update_model_status(self, result=None):
-        model = self.selected_model()
-        if result and result.get("source") == "AI":
-            self.model_status.set(f"Current: {result['model']}")
-        elif model == "local":
-            self.model_status.set("Current: Local assessment")
-        elif not get_api_key():
-            self.model_status.set("Current: Local assessment — API key not configured")
-        elif result:
-            self.model_status.set("Current: Local assessment — AI request unavailable")
-        else:
-            self.model_status.set(f"Selected: {model}")
+        self.model_status.set("Basic version · Local assessment")
 
     def change_model(self, _event=None):
         self.db.set_setting("assessment_model", self.selected_model())
@@ -177,23 +160,22 @@ class Workbench:
         if self.posting and self.posting.description and self.resume_paths:
             self.start_resume_match()
 
-    def configure_api_key(self):
-        key = simpledialog.askstring(
-            "OpenAI API key",
-            "Enter an API key. Leave blank to remove the saved key.",
-            show="*",
+    def configure_ai(self):
+        messagebox.showinfo(
+            "Upgrade · Coming soon",
+            "You are using the Basic version.\n\n"
+            "Basic includes local resume matching and a simple score.\n\n"
+            "The upgrade is in development and will add:\n"
+            "• Detailed match analytics\n"
+            "• Resume modification advice\n"
+            "• Application priority\n"
+            "• Access to newer, more accurate AI models",
             parent=self.root,
         )
-        if key is None:
-            return
-        try:
-            save_api_key(key.strip())
-        except Exception as error:
-            messagebox.showerror("API key", f"Could not update Windows Credential Manager: {error}", parent=self.root)
-            return
-        self.update_model_status()
-        if self.posting and self.posting.description and self.resume_paths:
-            self.start_resume_match()
+
+    def configure_api_key(self):
+        """Compatibility entry point for callers from older UI code."""
+        self.configure_ai()
 
     def set_analysis(self, text):
         self.analysis_text.configure(state="normal")

@@ -4,6 +4,7 @@ import ipaddress
 import json
 import re
 import socket
+import sys
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 from html.parser import HTMLParser
@@ -142,17 +143,52 @@ def _fetch_direct(url):
     raise ValueError('The job URL redirects too many times.')
 
 
-def _fetch_with_browser(url):
-    from selenium import webdriver
-    from selenium.webdriver.common.by import By
-    from selenium.webdriver.support.ui import WebDriverWait
+def _browser_candidates():
+    if sys.platform == 'darwin':
+        return ('safari', 'chrome', 'firefox', 'edge')
+    if sys.platform == 'win32':
+        return ('edge', 'chrome', 'firefox')
+    return ('firefox', 'chrome', 'edge')
 
+
+def _create_driver(name):
+    from selenium import webdriver
+    if name == 'safari':
+        return webdriver.Safari()
+    if name == 'firefox':
+        options = webdriver.FirefoxOptions()
+        options.add_argument('--width=1280')
+        options.add_argument('--height=1000')
+        return webdriver.Firefox(options=options)
+    if name == 'edge':
+        options = webdriver.EdgeOptions()
+        options.add_argument('--disable-gpu')
+        options.add_argument('--window-size=1280,1000')
+        options.add_argument('--lang=en-CA')
+        options.add_argument('--log-level=3')
+        return webdriver.Edge(options=options)
     options = webdriver.ChromeOptions()
     options.add_argument('--disable-gpu')
     options.add_argument('--window-size=1280,1000')
     options.add_argument('--lang=en-CA')
     options.add_argument('--log-level=3')
-    driver = webdriver.Chrome(options=options)
+    return webdriver.Chrome(options=options)
+
+
+def _fetch_with_browser(url):
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.support.ui import WebDriverWait
+
+    driver = None
+    last_error = None
+    for name in _browser_candidates():
+        try:
+            driver = _create_driver(name)
+            break
+        except Exception as error:
+            last_error = error
+    if driver is None:
+        raise RuntimeError('No supported browser is available for automatic job-page parsing.') from last_error
     try:
         driver.minimize_window()
         driver.set_page_load_timeout(25)

@@ -7,16 +7,19 @@ from visualization.Workbench import format_assessment
 
 
 class ResumeAdvisorTests(unittest.TestCase):
-    def test_compact_assessment_contains_every_decision(self):
+    def test_basic_assessment_only_shows_resume_match_and_source(self):
         output = format_assessment({
             'file': 'FullStack.pdf', 'score': 4.9,
             'modification_needed': False, 'recommendation': 'Skip',
             'summary': 'Missing required experience.', 'source': 'Local match'
         })
-        self.assertEqual(len(output.splitlines()), 5)
-        self.assertIn('Modify: No', output)
-        self.assertIn('Priority: Skip', output)
+        self.assertEqual(len(output.splitlines()), 3)
+        self.assertIn('Recommended: FullStack.pdf', output)
+        self.assertIn('Match: ★★  4.9/10', output)
         self.assertIn('Local assessment', output)
+        self.assertNotIn('Modify:', output)
+        self.assertNotIn('Priority:', output)
+        self.assertNotIn('Missing required experience.', output)
 
     def test_ai_assessment_names_the_actual_model(self):
         output = format_assessment({
@@ -25,6 +28,16 @@ class ResumeAdvisorTests(unittest.TestCase):
             'summary': 'Strong match.', 'source': 'AI', 'model': 'gpt-5.6-terra'
         })
         self.assertIn('AI assessment · gpt-5.6-terra', output)
+
+    def test_api_failure_details_are_not_part_of_basic_results(self):
+        output = format_assessment({
+            'file': 'QA.pdf', 'score': 4.9,
+            'modification_needed': False, 'recommendation': 'Skip',
+            'summary': 'Local fallback.', 'source': 'Local match',
+            'api_error': 'OpenAI API: Model access denied.'
+        })
+        self.assertIn('Local assessment', output)
+        self.assertNotIn('OpenAI API: Model access denied.', output)
 
     def test_local_resume_recommendation(self):
         with tempfile.TemporaryDirectory() as folder:

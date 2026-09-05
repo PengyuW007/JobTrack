@@ -59,6 +59,24 @@ def save_api_key(api_key):
             pass
 
 
+def api_error_message(response=None, error=None):
+    if response is not None:
+        try:
+            detail = response.json().get("error", {})
+            message = detail.get("message")
+            code = detail.get("code") or detail.get("type")
+            if message:
+                return f"OpenAI API: {message}" + (f" ({code})" if code and code not in message else "")
+        except (ValueError, AttributeError):
+            pass
+        return f"OpenAI API request failed (HTTP {response.status_code})."
+    if isinstance(error, requests.Timeout):
+        return "OpenAI API request timed out. Check the network and try again."
+    if isinstance(error, requests.ConnectionError):
+        return "Could not reach the OpenAI API. Check the network or firewall."
+    return f"OpenAI API response could not be read: {error}"
+
+
 def local_recommendation(description, resumes):
     job_text = description.casefold()
     job_skills = {skill for skill in SKILLS if skill in job_text}
@@ -148,6 +166,7 @@ def ai_recommendation(description, resumes, model=None):
         ],
         "text": {"format": {"type": "json_schema", "name": "resume_choice", "strict": True, "schema": schema}},
     }
+    response = None
     try:
         response = requests.post("https://api.openai.com/v1/responses", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json=payload, timeout=45)
         response.raise_for_status()
@@ -167,7 +186,8 @@ def ai_recommendation(description, resumes, model=None):
         result["source"] = "AI"
         result["model"] = model
         return result
-    except (requests.RequestException, KeyError, ValueError, TypeError, StopIteration, json.JSONDecodeError):
+    except (requests.RequestException, KeyError, ValueError, TypeError, StopIteration, json.JSONDecodeError) as error:
+        fallback["api_error"] = api_error_message(response, error)
         return fallback
 
 
