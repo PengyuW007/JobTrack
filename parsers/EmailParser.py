@@ -32,6 +32,15 @@ class EmailParser:
         if match:
             return match.group(1).strip()
 
+        match = re.search(
+            r"thank you for your application to\s+(.+?)(?:\s*[-|]|$)",
+            subject,
+            re.IGNORECASE
+        )
+
+        if match:
+            return match.group(1).strip()
+
         # Rule 3
         # Thanks for applying to XXX
 

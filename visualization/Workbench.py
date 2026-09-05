@@ -38,7 +38,7 @@ class Workbench:
     def __init__(self, db, synchronize=None):
         self.db, self.dao = db, DataAccessJob(db.conn)
         self.duplicates, self.synchronize = DuplicateService(db.conn), synchronize
-        self.events, self.resume_paths, self.matches, self.posting = queue.Queue(), [], [], None
+        self.events, self.resume_paths, self.matches, self.history_rows, self.posting = queue.Queue(), [], [], [], None
         self.analyzing = False
         self.root = tk.Tk()
         self.root.title("JobTrack")
@@ -51,7 +51,7 @@ class Workbench:
         self.left = ttk.Frame(self.root, padding=18)
         self.left.grid(row=0, column=0, sticky="nsew")
         self.left.columnconfigure(0, weight=1)
-        self.left.rowconfigure(7, weight=1)
+        self.left.rowconfigure(2, weight=1)
         self.right = ttk.Frame(self.root, padding=(5, 18, 18, 18))
         self.right.grid(row=0, column=1, sticky="nsew")
         self.right.columnconfigure(0, weight=1)
@@ -85,8 +85,9 @@ class Workbench:
 
     def _build_lookup(self):
         box = ttk.LabelFrame(self.left, text="Job check", padding=10)
-        box.grid(row=2, column=0, sticky="ew", pady=8)
+        box.grid(row=2, column=0, sticky="nsew", pady=8)
         box.columnconfigure(0, weight=1)
+        box.rowconfigure(5, weight=1)
         self.model_choice = tk.StringVar(value="Local assessment")
         self.db.set_setting("assessment_model", "local")
         model_row = ttk.Frame(box)
@@ -115,6 +116,27 @@ class Workbench:
         analysis_scroll = ttk.Scrollbar(analysis, orient="vertical", command=self.analysis_text.yview)
         analysis_scroll.grid(row=0, column=1, sticky="ns")
         self.analysis_text.configure(yscrollcommand=analysis_scroll.set)
+
+        history = ttk.LabelFrame(box, text="Application history", padding=(6, 5))
+        history.grid(row=5, column=0, columnspan=2, sticky="nsew", pady=(10, 0))
+        history.columnconfigure(0, weight=1)
+        history.rowconfigure(0, weight=1)
+        self.history_label = history
+        self.results = ttk.Treeview(history, columns=("date", "channel", "company", "position"), show="headings", height=4)
+        for key, label, width in (("date", "Applied", 78), ("channel", "Channel", 105),
+                                  ("company", "Company", 95), ("position", "Role", 130)):
+            self.results.heading(key, text=label)
+            self.results.column(key, width=width, minwidth=55)
+        self.results.grid(row=0, column=0, sticky="nsew")
+        history_scroll = ttk.Scrollbar(history, orient="vertical", command=self.results.yview)
+        history_scroll.grid(row=0, column=1, sticky="ns")
+        self.results.configure(yscrollcommand=history_scroll.set)
+        self.details = tk.StringVar()
+        self.details_label = ttk.Label(history, textvariable=self.details, wraplength=315)
+        self.details_label.grid(row=1, column=0, columnspan=2, sticky="w", pady=(5, 0))
+        self.results.bind("<<TreeviewSelect>>", self.show_details)
+        self.show_empty_history()
+
         resumes = ttk.LabelFrame(self.left, text="Resumes", padding=10)
         resumes.grid(row=3, column=0, sticky="ew", pady=8)
         resumes.columnconfigure(0, weight=1)
@@ -128,18 +150,6 @@ class Workbench:
         ttk.Button(resumes, text="Replace", command=self.replace_resume).grid(row=1, column=1, pady=(6, 0))
         ttk.Button(resumes, text="Rename", command=self.rename_resume).grid(row=1, column=2, pady=(6, 0))
         ttk.Button(resumes, text="Remove", command=self.remove_resume).grid(row=1, column=3, sticky="e", pady=(6, 0))
-        self.history_label = ttk.Label(self.left, text="Application history", font=("Segoe UI", 10, "bold"))
-        self.history_label.grid(row=4, column=0, sticky="w", pady=(10, 4))
-        self.results = ttk.Treeview(self.left, columns=("company", "position", "date"), show="headings", height=4)
-        for key, label, width in (("company", "Company", 90), ("position", "Role", 145), ("date", "Applied", 85)):
-            self.results.heading(key, text=label)
-            self.results.column(key, width=width, minwidth=55)
-        self.results.grid(row=7, column=0, sticky="nsew")
-        self.details = tk.StringVar()
-        self.details_label = ttk.Label(self.left, textvariable=self.details, wraplength=340)
-        self.details_label.grid(row=8, column=0, sticky="w", pady=(6, 0))
-        self.results.bind("<<TreeviewSelect>>", self.show_details)
-        self.set_history_visible(False)
 
     def _build_chart(self):
         ttk.Label(self.right, text="Application funnel", font=("Segoe UI", 14, "bold")).grid(row=0, column=0, sticky="w")
@@ -184,15 +194,12 @@ class Workbench:
         self.analysis_text.configure(state="disabled")
 
     def set_history_visible(self, visible):
-        if visible:
-            self.history_label.grid()
-            self.results.grid()
-            self.details_label.grid()
-        else:
-            self.history_label.grid_remove()
-            self.results.grid_remove()
-            self.details_label.grid_remove()
-            self.details.set("")
+        self.history_label.grid()
+
+    def show_empty_history(self):
+        self.results.delete(*self.results.get_children())
+        self.results.insert("", "end", iid="empty", values=("", "No previous application found", "", ""))
+        self.details.set("")
 
     def _build_footer(self):
         footer = ttk.Frame(self.root, padding=(18, 6, 18, 12))
@@ -305,7 +312,7 @@ class Workbench:
         self.lookup_status.set("")
         self.set_analysis("")
         self.results.delete(*self.results.get_children())
-        self.set_history_visible(False)
+        self.set_history_visible(True)
         threading.Thread(target=self._fetch_worker, args=(url,), daemon=True).start()
 
     def clear_job(self):
@@ -313,11 +320,12 @@ class Workbench:
         self.url.set("")
         self.posting = None
         self.matches = []
+        self.history_rows = []
         self.job_title.set("Paste a job URL from any public platform")
         self.lookup_status.set("")
         self.set_analysis("")
-        self.results.delete(*self.results.get_children())
-        self.set_history_visible(False)
+        self.show_empty_history()
+        self.set_history_visible(True)
 
     def _fetch_worker(self, url):
         try:
@@ -330,10 +338,18 @@ class Workbench:
         self.posting = posting
         self.job_title.set(" · ".join(value for value in (posting.position, posting.company) if value) or "Job page unavailable")
         self.matches = self.duplicates.search(posting)
+        self.history_rows = []
         self.results.delete(*self.results.get_children())
-        for index, match in enumerate(self.matches):
-            self.results.insert("", "end", iid=str(index), values=(match["company"], match["position"], match["dates"]))
-        self.set_history_visible(bool(self.matches))
+        for match in self.matches:
+            for application in match["applications"]:
+                index = len(self.history_rows)
+                self.history_rows.append(match)
+                self.results.insert("", "end", iid=str(index), values=(
+                    application["date"], application["channel"], match["company"], match["position"]
+                ))
+        self.set_history_visible(True)
+        if not self.matches:
+            self.show_empty_history()
         if self.matches:
             self.lookup_status.set(f"Previously applied — {len(self.matches)} match(es)")
         elif posting.position:
@@ -359,8 +375,8 @@ class Workbench:
 
     def show_details(self, _event=None):
         selected = self.results.selection()
-        if selected:
-            match = self.matches[int(selected[0])]
+        if selected and selected[0] != "empty":
+            match = self.history_rows[int(selected[0])]
             self.details.set(f"{match['status']} · {match['reason']}")
 
     def start_sync(self):

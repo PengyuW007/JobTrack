@@ -288,7 +288,11 @@ class DuplicateService:
             for org, title, description in candidates:
                 same_company = normalize(posting.company) and normalize(posting.company) == normalize(org)
                 title_a, title_b = normalize(posting.position), normalize(title)
-                if not same_company or not title_a or not title_b or title_b in ('unknown', 'unknown position'):
+                if same_company and title_a and (not title_b or title_b in ('unknown', 'unknown position')):
+                    if score < 55:
+                        score, reason = 55, 'Possible match: same company; original role unavailable'
+                    continue
+                if not same_company or not title_a or not title_b:
                     continue
                 similarity = SequenceMatcher(None, title_a, title_b).ratio()
                 if similarity >= .86 and score < 80:
@@ -298,11 +302,41 @@ class DuplicateService:
                     if desc_similarity >= .92 and score < 95:
                         score, reason = 95, 'Likely repost: company, title, and description match'
             if score:
-                dates = sorted({e[0] for e in events if e[1] == 'Applied'})
-                date_label = ', '.join(date[:10] for date in dates) if dates else created[:10]
-                matches.append(dict(key=key, company=company, position=position, dates=date_label,
+                applied_events = [e for e in events if e[1] == 'Applied']
+                applications = []
+                for date, _event_status, event_subject, event_body in applied_events:
+                    applications.append({
+                        'date': date[:10],
+                        'channel': self._application_channel(event_subject, event_body),
+                    })
+                if not applications:
+                    applications.append({'date': created[:10], 'channel': 'Unknown'})
+                date_label = ', '.join(application['date'] for application in applications)
+
+                generic_companies = {'linkedin', 'indeed', 'workday', 'autonotification workday'}
+                display_company = posting.company if normalize(company) in generic_companies else company
+                display_position = position or posting.position
+                matches.append(dict(key=key, company=display_company, position=display_position,
+                                    dates=date_label, applications=applications,
                                     status=status, reason=reason, score=score))
         return sorted(matches, key=lambda item: -item['score'])
+
+    @staticmethod
+    def _application_channel(subject, body):
+        text = normalize(f'{subject or ""} {body or ""}')
+        if 'easy apply' in text:
+            return 'LinkedIn Easy Apply'
+        if 'myworkdayjobs' in text or 'workday' in text:
+            return 'Workday'
+        if 'indeed' in text:
+            return 'Indeed'
+        if 'linkedin' in text:
+            return 'LinkedIn'
+        if 'greenhouse' in text:
+            return 'Greenhouse'
+        if 'lever.co' in text or 'lever jobs' in text:
+            return 'Lever'
+        return 'Company website'
 
     def save_snapshot(self, key, posting):
         self.conn.execute('INSERT OR REPLACE INTO posting_snapshots VALUES (?, ?, ?, ?, ?)',

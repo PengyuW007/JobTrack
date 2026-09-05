@@ -18,6 +18,7 @@ from googleapiclient.discovery import build
 from google.auth.exceptions import RefreshError
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
+CLASSIFIER_VERSION = 2
 
 
 def get_gmail_service():
@@ -57,8 +58,12 @@ def synchronize_gmail():
         service = get_gmail_service()
 
         # One full history pass supplies evidence missing from legacy 500-character previews.
-        db.conn.execute("CREATE TABLE IF NOT EXISTS evidence_metadata (id INTEGER PRIMARY KEY, completed INTEGER)")
-        FULL_REBUILD = db.conn.execute("SELECT completed FROM evidence_metadata WHERE id = 1").fetchone() is None
+        db.conn.execute("CREATE TABLE IF NOT EXISTS evidence_metadata (id INTEGER PRIMARY KEY, completed INTEGER, classifier_version INTEGER DEFAULT 1)")
+        metadata_columns = {row[1] for row in db.conn.execute("PRAGMA table_info(evidence_metadata)")}
+        if "classifier_version" not in metadata_columns:
+            db.conn.execute("ALTER TABLE evidence_metadata ADD COLUMN classifier_version INTEGER DEFAULT 1")
+        metadata = db.conn.execute("SELECT completed, classifier_version FROM evidence_metadata WHERE id = 1").fetchone()
+        FULL_REBUILD = metadata is None or not metadata[0] or (metadata[1] or 1) < CLASSIFIER_VERSION
 
         if FULL_REBUILD:
             query = ""
@@ -151,7 +156,10 @@ def synchronize_gmail():
             inserted_count += 1
         print(f"Inserted {inserted_count} job-related emails")
         db.update_last_sync_date(sync_started)
-        db.conn.execute("INSERT OR REPLACE INTO evidence_metadata VALUES (1, 1)")
+        db.conn.execute(
+            "INSERT OR REPLACE INTO evidence_metadata(id, completed, classifier_version) VALUES (1, 1, ?)",
+            (CLASSIFIER_VERSION,),
+        )
         db.conn.commit()
     finally:
         db.close()

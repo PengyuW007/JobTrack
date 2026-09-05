@@ -68,6 +68,7 @@ class EmailClassifier:
 
         if (
                 "thank you for applying" in text
+                or "thank you for your application" in text
                 or "thanks for applying" in text
                 or "application received" in text
                 or "thanks for your application" in text
@@ -110,6 +111,7 @@ class EmailClassifier:
 
         keywords = [
             "thank you for applying",
+            "thank you for your application",
             "thanks for applying",
             "application received",
             "we received your application",

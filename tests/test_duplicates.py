@@ -8,6 +8,8 @@ from business.DuplicateService import DuplicateService, Posting, canonical_url, 
 from persistence.DataAccess import DataAccess
 from persistence.DataAccessJob import DataAccessJob
 from business.AnalyticsService import AnalyticsService
+from business.EmailClassifier import EmailClassifier
+from parsers.EmailParser import EmailParser
 
 
 class DuplicateTests(unittest.TestCase):
@@ -99,6 +101,41 @@ class DuplicateTests(unittest.TestCase):
         with patch('business.DuplicateService._fetch_direct', return_value=Posting(url, warning='blocked')), \
                 patch('business.DuplicateService._fetch_with_browser', return_value=browser_result):
             self.assertEqual(fetch_posting(url).position, 'Engineer')
+
+    def test_thank_you_for_your_application_is_imported(self):
+        subject = 'Thank you for your application to PolicyMe'
+        self.assertTrue(EmailClassifier.is_job_related(subject))
+        self.assertEqual(EmailClassifier.detect_status(subject, subject), 'Applied')
+        self.assertEqual(EmailParser.extract_company('Workable <noreply@example.com>', subject, ''), 'PolicyMe')
+
+    def test_same_company_is_shown_when_original_role_is_missing(self):
+        job = SimpleNamespace(
+            gmail_id='policyme', application_key='policyme_', company='PolicyMe', position='',
+            sender='PolicyMe <hello@policyme.com>', created_date='2026-08-05 09:00:00 EDT',
+            last_updated_date='2026-08-05 09:00:00 EDT', status='Applied', assessment_count=0,
+            interview_count=0, offer=0, subject='Thank you for your application to PolicyMe', body_preview='Received'
+        )
+        self.db.insert_job(job)
+        matches = self.service.search(Posting('https://linkedin.com/jobs/view/4419905573', 'PolicyMe', 'Software Engineer (Remote)', 'Build software'))
+        policyme = next(match for match in matches if match['company'] == 'PolicyMe')
+        self.assertEqual(policyme['score'], 55)
+        self.assertIn('original role unavailable', policyme['reason'])
+
+    def test_application_channel_is_inferred_from_confirmation_email(self):
+        self.assertEqual(
+            DuplicateService._application_channel(
+                'Your application was submitted',
+                'AutoNotification@myworkday.com confirms your application.'
+            ),
+            'Workday',
+        )
+        self.assertEqual(
+            DuplicateService._application_channel(
+                'Your application was sent',
+                'You applied using LinkedIn Easy Apply.'
+            ),
+            'LinkedIn Easy Apply',
+        )
 
 
 if __name__ == '__main__':
