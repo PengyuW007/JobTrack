@@ -1,4 +1,5 @@
 import sqlite3
+from datetime import datetime
 
 
 class DataAccess:
@@ -51,7 +52,17 @@ class DataAccess:
             position TEXT, description TEXT,
             PRIMARY KEY (application_key, url)
         );
+        CREATE TABLE IF NOT EXISTS resumes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            updated_at TEXT NOT NULL
+        );
         """)
+        columns = {row[1] for row in self.cursor.execute("PRAGMA table_info(sync_metadata)")}
+        if "last_sync_at" not in columns:
+            self.cursor.execute("ALTER TABLE sync_metadata ADD COLUMN last_sync_at TEXT")
         self.conn.commit()
 
     def save_evidence(self, job, body):
@@ -150,12 +161,48 @@ END,
 
     def update_last_sync_date(self, sync_date):
         self.cursor.execute("""
-        INSERT INTO sync_metadata(id, last_sync_date)
-        VALUES(1, ?)
+        INSERT INTO sync_metadata(id, last_sync_date, last_sync_at)
+        VALUES(1, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
-            last_sync_date = excluded.last_sync_date
-        """, (sync_date,))
+            last_sync_date = excluded.last_sync_date,
+            last_sync_at = excluded.last_sync_at
+        """, (sync_date, datetime.now().astimezone().strftime("%Y-%m-%d %H:%M")))
 
+        self.conn.commit()
+
+    def get_last_sync_at(self):
+        row = self.conn.execute("SELECT last_sync_at FROM sync_metadata WHERE id = 1").fetchone()
+        return row[0] if row and row[0] else None
+
+    def get_resumes(self):
+        return self.conn.execute(
+            "SELECT id, name, file_path, enabled, updated_at FROM resumes ORDER BY name"
+        ).fetchall()
+
+    def add_resume(self, name, file_path):
+        self.conn.execute(
+            "INSERT INTO resumes(name, file_path, enabled, updated_at) VALUES (?, ?, 1, ?)",
+            (name, file_path, datetime.now().astimezone().strftime("%Y-%m-%d"))
+        )
+        self.conn.commit()
+
+    def update_resume(self, resume_id, name=None, file_path=None, enabled=None):
+        current = self.conn.execute(
+            "SELECT name, file_path, enabled FROM resumes WHERE id = ?", (resume_id,)
+        ).fetchone()
+        if not current:
+            return
+        self.conn.execute(
+            "UPDATE resumes SET name = ?, file_path = ?, enabled = ?, updated_at = ? WHERE id = ?",
+            (name if name is not None else current[0],
+             file_path if file_path is not None else current[1],
+             enabled if enabled is not None else current[2],
+             datetime.now().astimezone().strftime("%Y-%m-%d"), resume_id)
+        )
+        self.conn.commit()
+
+    def delete_resume(self, resume_id):
+        self.conn.execute("DELETE FROM resumes WHERE id = ?", (resume_id,))
         self.conn.commit()
 
     def close(self):

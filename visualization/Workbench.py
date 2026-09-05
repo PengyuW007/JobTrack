@@ -3,7 +3,7 @@ import threading
 import tkinter as tk
 from datetime import datetime, timedelta
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox, simpledialog, ttk
 from zoneinfo import ZoneInfo
 
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
@@ -28,6 +28,7 @@ class Workbench:
         self.root.columnconfigure(0, minsize=390)
         self.root.columnconfigure(1, weight=1)
         self.root.rowconfigure(0, weight=1)
+        self.root.rowconfigure(1, weight=0)
         self.left = ttk.Frame(self.root, padding=18)
         self.left.grid(row=0, column=0, sticky="nsew")
         self.left.columnconfigure(0, weight=1)
@@ -40,10 +41,10 @@ class Workbench:
         self._build_dates()
         self._build_lookup()
         self._build_chart()
+        self._build_footer()
+        self.refresh_resumes()
         self.refresh_chart()
         self.root.after(100, self.poll)
-        if synchronize:
-            self.root.after(250, self.start_sync)
 
     def _build_dates(self):
         today = datetime.now(ZoneInfo("America/Toronto")).date().isoformat()
@@ -74,18 +75,25 @@ class Workbench:
         entry.bind("<Return>", lambda _event: self.lookup_url())
         self.lookup_button = ttk.Button(box, text="Check", command=self.lookup_url)
         self.lookup_button.grid(row=0, column=1, padx=(6, 0))
-        self.job_title = tk.StringVar(value="Paste an Indeed or LinkedIn job URL")
+        self.job_title = tk.StringVar(value="Paste a job URL from any public platform")
         ttk.Label(box, textvariable=self.job_title, font=("Segoe UI", 10, "bold"), wraplength=330).grid(row=1, column=0, columnspan=2, sticky="w", pady=(10, 2))
         self.lookup_status = tk.StringVar()
         ttk.Label(box, textvariable=self.lookup_status, wraplength=330).grid(row=2, column=0, columnspan=2, sticky="w")
-        resumes = ttk.LabelFrame(self.left, text="Resume match", padding=10)
+        resumes = ttk.LabelFrame(self.left, text="Resumes", padding=10)
         resumes.grid(row=3, column=0, sticky="ew", pady=8)
         resumes.columnconfigure(0, weight=1)
-        self.resume_files = tk.StringVar(value="No resumes selected")
-        ttk.Label(resumes, textvariable=self.resume_files, wraplength=250).grid(row=0, column=0, sticky="w")
-        ttk.Button(resumes, text="Choose resumes", command=self.choose_resumes).grid(row=0, column=1, padx=(6, 0))
+        self.resume_table = ttk.Treeview(resumes, columns=("use", "name", "updated"), show="headings", height=4)
+        for key, label, width in (("use", "Use", 38), ("name", "Resume", 190), ("updated", "Updated", 75)):
+            self.resume_table.heading(key, text=label)
+            self.resume_table.column(key, width=width, minwidth=35)
+        self.resume_table.grid(row=0, column=0, columnspan=4, sticky="ew")
+        self.resume_table.bind("<Double-1>", lambda _event: self.toggle_resume())
+        ttk.Button(resumes, text="Add", command=self.add_resumes).grid(row=1, column=0, sticky="w", pady=(6, 0))
+        ttk.Button(resumes, text="Replace", command=self.replace_resume).grid(row=1, column=1, pady=(6, 0))
+        ttk.Button(resumes, text="Rename", command=self.rename_resume).grid(row=1, column=2, pady=(6, 0))
+        ttk.Button(resumes, text="Remove", command=self.remove_resume).grid(row=1, column=3, sticky="e", pady=(6, 0))
         self.resume_result = tk.StringVar()
-        ttk.Label(resumes, textvariable=self.resume_result, wraplength=330).grid(row=1, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        ttk.Label(resumes, textvariable=self.resume_result, wraplength=330).grid(row=2, column=0, columnspan=4, sticky="w", pady=(8, 0))
         ttk.Label(self.left, text="Application history", font=("Segoe UI", 10, "bold")).grid(row=4, column=0, sticky="w", pady=(10, 4))
         self.results = ttk.Treeview(self.left, columns=("company", "position", "date"), show="headings", height=7)
         for key, label, width in (("company", "Company", 90), ("position", "Role", 145), ("date", "Applied", 85)):
@@ -95,12 +103,6 @@ class Workbench:
         self.details = tk.StringVar()
         ttk.Label(self.left, textvariable=self.details, wraplength=340).grid(row=8, column=0, sticky="w", pady=(6, 0))
         self.results.bind("<<TreeviewSelect>>", self.show_details)
-        footer = ttk.Frame(self.left)
-        footer.grid(row=9, column=0, sticky="ew", pady=(12, 0))
-        self.sync_status = tk.StringVar(value="Ready")
-        ttk.Label(footer, textvariable=self.sync_status).grid(row=0, column=0, sticky="w")
-        self.sync_button = ttk.Button(footer, text="Sync Gmail", command=self.start_sync)
-        self.sync_button.grid(row=0, column=1, padx=(8, 0))
 
     def _build_chart(self):
         ttk.Label(self.right, text="Application funnel", font=("Segoe UI", 14, "bold")).grid(row=0, column=0, sticky="w")
@@ -108,6 +110,16 @@ class Workbench:
         self.axes = self.figure.add_subplot(111)
         self.canvas = FigureCanvasTkAgg(self.figure, master=self.right)
         self.canvas.get_tk_widget().grid(row=1, column=0, sticky="nsew")
+
+    def _build_footer(self):
+        footer = ttk.Frame(self.root, padding=(18, 6, 18, 12))
+        footer.grid(row=1, column=0, columnspan=2, sticky="ew")
+        footer.columnconfigure(1, weight=1)
+        self.sync_button = ttk.Button(footer, text="Sync Gmail", command=self.start_sync)
+        self.sync_button.grid(row=0, column=0, sticky="w")
+        last_sync = self.db.get_last_sync_at()
+        self.sync_status = tk.StringVar(value=f"Last synced at {last_sync}" if last_sync else "Never synced")
+        ttk.Label(footer, textvariable=self.sync_status).grid(row=0, column=1, sticky="e")
 
     def quick_range(self, days):
         today = datetime.now(ZoneInfo("America/Toronto")).date()
@@ -137,14 +149,69 @@ class Workbench:
         self.figure.tight_layout()
         self.canvas.draw_idle()
 
-    def choose_resumes(self):
-        paths = filedialog.askopenfilenames(parent=self.root, title="Choose resumes", filetypes=(("Resumes", "*.pdf *.docx *.txt *.md"), ("All files", "*.*")))
+    @staticmethod
+    def _resume_filetypes():
+        return (("Resumes", "*.pdf *.docx *.txt *.md"), ("All files", "*.*"))
+
+    def refresh_resumes(self):
+        self.resume_table.delete(*self.resume_table.get_children())
+        self.resume_paths = []
+        for resume_id, name, path, enabled, updated in self.db.get_resumes():
+            available = Path(path).is_file()
+            use = "✓" if enabled and available else "—"
+            self.resume_table.insert("", "end", iid=str(resume_id), values=(use, name, updated))
+            if enabled and available:
+                self.resume_paths.append(path)
+
+    def selected_resume_id(self):
+        selected = self.resume_table.selection()
+        return int(selected[0]) if selected else None
+
+    def add_resumes(self):
+        paths = filedialog.askopenfilenames(parent=self.root, title="Add resumes", filetypes=self._resume_filetypes())
+        for path in paths:
+            self.db.add_resume(Path(path).stem, str(Path(path).resolve()))
         if paths:
-            self.resume_paths = list(paths)
-            names = [Path(path).name for path in paths]
-            self.resume_files.set(f"{len(names)} selected: " + ", ".join(names[:2]) + ("…" if len(names) > 2 else ""))
+            self.refresh_resumes()
             if self.posting and self.posting.description:
                 self.start_resume_match()
+
+    def replace_resume(self):
+        resume_id = self.selected_resume_id()
+        if resume_id is None:
+            self.resume_result.set("Select a resume to replace")
+            return
+        path = filedialog.askopenfilename(parent=self.root, title="Replace resume", filetypes=self._resume_filetypes())
+        if path:
+            self.db.update_resume(resume_id, name=Path(path).stem, file_path=str(Path(path).resolve()))
+            self.refresh_resumes()
+
+    def rename_resume(self):
+        resume_id = self.selected_resume_id()
+        if resume_id is None:
+            self.resume_result.set("Select a resume to rename")
+            return
+        current = self.resume_table.item(str(resume_id), "values")[1]
+        name = simpledialog.askstring("Rename resume", "Name", initialvalue=current, parent=self.root)
+        if name and name.strip():
+            self.db.update_resume(resume_id, name=name.strip())
+            self.refresh_resumes()
+
+    def toggle_resume(self):
+        resume_id = self.selected_resume_id()
+        if resume_id is None:
+            return
+        current = next(row for row in self.db.get_resumes() if row[0] == resume_id)
+        self.db.update_resume(resume_id, enabled=0 if current[3] else 1)
+        self.refresh_resumes()
+
+    def remove_resume(self):
+        resume_id = self.selected_resume_id()
+        if resume_id is None:
+            self.resume_result.set("Select a resume to remove")
+            return
+        self.db.delete_resume(resume_id)
+        self.refresh_resumes()
 
     def lookup_url(self):
         url = self.url.get().strip()
@@ -233,7 +300,8 @@ class Workbench:
                         self.resume_result.set(errors[0] if errors else "No readable resumes found")
                 else:
                     self.sync_button.configure(state="normal")
-                    self.sync_status.set("Sync failed" if value else "Synced")
+                    last_sync = self.db.get_last_sync_at()
+                    self.sync_status.set("Sync failed" if value else f"Last synced at {last_sync}")
                     self.refresh_chart()
         except queue.Empty:
             pass

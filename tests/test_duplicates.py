@@ -67,6 +67,20 @@ class DuplicateTests(unittest.TestCase):
         self.db.create_tables()
         self.assertEqual(len(DataAccessJob(self.db.conn).get_all_jobs()), 1)
 
+    def test_resume_management_and_sync_timestamp(self):
+        self.db.add_resume('Full Stack—0905', 'C:/resumes/full-stack-0905.pdf')
+        resume_id = self.db.get_resumes()[0][0]
+        self.db.update_resume(resume_id, name='Full Stack—0906', file_path='C:/resumes/full-stack-0906.pdf')
+        saved = self.db.get_resumes()[0]
+        self.assertEqual(saved[1], 'Full Stack—0906')
+        self.assertEqual(saved[2], 'C:/resumes/full-stack-0906.pdf')
+        self.db.update_resume(resume_id, enabled=0)
+        self.assertEqual(self.db.get_resumes()[0][3], 0)
+        self.db.update_last_sync_date('2026/09/05')
+        self.assertTrue(self.db.get_last_sync_at().startswith('2026-'))
+        self.db.delete_resume(resume_id)
+        self.assertEqual(self.db.get_resumes(), [])
+
     def test_structured_page_and_ambiguous_page(self):
         node = {'@type': 'JobPosting', 'title': 'Engineer', 'hiringOrganization': {'name': 'Acme'}, 'description': '<p>Work &amp; build</p>'}
         page = '<script type="application/ld+json">' + json.dumps({'@graph': [node]}) + '</script>'
