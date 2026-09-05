@@ -294,7 +294,8 @@ class Workbench:
                             f"Recommended Resume\n{result['file']}\n\n"
                             f"Match\n{stars}  {result['score']:.1f}/10\n\n"
                             f"Modification Needed\n{modification}\n\n"
-                            f"Recommendation\n{result['recommendation']} — {result['summary']}"
+                            f"Recommendation\n{result['recommendation']} — {result['summary']}\n\n"
+                            f"{result['source']} assessment"
                         )
                     else:
                         self.resume_result.set(errors[0] if errors else "No readable resumes found")

@@ -6,7 +6,14 @@ from pathlib import Path
 
 import requests
 
-SKILLS = {"python", "java", "javascript", "typescript", "react", "angular", "vue", "sql", "aws", "azure", "gcp", "docker", "kubernetes", "terraform", "spark", "pandas", "machine learning", "data analysis", "power bi", "tableau", "excel", "salesforce", "node", "c++", "c#", ".net", "rest", "graphql", "git", "linux", "agile", "scrum", "leadership"}
+SKILLS = {"python", "java", "javascript", "typescript", "react", "angular", "vue", "sql", "aws", "azure", "gcp", "docker", "kubernetes", "terraform", "spark", "pandas", "machine learning", "data analysis", "power bi", "tableau", "excel", "salesforce", "node", "c++", "c#", ".net", "rest", "graphql", "git", "linux", "agile", "scrum", "leadership", "ci/cd", "devops", "domain-driven design", "design patterns"}
+
+SPECIALIZATIONS = {
+    "full stack": ("fullstack", "full stack", "full-stack"),
+    "java": ("java",),
+    "qa": ("qa", "quality assurance"),
+    "data": ("data", "analytics"),
+}
 
 
 def read_resume(path):
@@ -28,18 +35,52 @@ def read_resume(path):
 
 
 def local_recommendation(description, resumes):
-    job_skills = {skill for skill in SKILLS if skill in description.casefold()}
+    job_text = description.casefold()
+    job_skills = {skill for skill in SKILLS if skill in job_text}
+    qualification_text = job_text.split("qualifications", 1)[-1]
+    required_skills = {
+        skill for skill in job_skills
+        if any(skill in sentence and any(marker in sentence for marker in ("strong", "minimum", "required", "must"))
+               for sentence in re.split(r"[.\n]", qualification_text))
+    }
+    weights = {skill: (3 if skill in required_skills else .5 if skill in ("agile", "scrum", "git", "leadership") else 1) for skill in job_skills}
+    total_weight = sum(weights.values()) or 1
+    minimum_years_match = re.search(r"minimum\s+(\d+)\+?\s+years", job_text)
+    minimum_years = int(minimum_years_match.group(1)) if minimum_years_match else 0
     ranked = []
     for path, text in resumes:
-        overlap = sorted(job_skills & {skill for skill in SKILLS if skill in text.casefold()})
-        ranked.append((len(overlap) / max(len(job_skills), 1), path, overlap))
+        resume_text = text.casefold()
+        overlap = sorted(job_skills & {skill for skill in SKILLS if skill in resume_text})
+        skill_ratio = sum(weights[skill] for skill in overlap) / total_weight
+        name = Path(path).stem.casefold()
+        specialization_bonus = max(
+            (1.5 for label, aliases in SPECIALIZATIONS.items()
+             if label in job_text and any(alias in name for alias in aliases)),
+            default=0,
+        )
+        ranked.append((skill_ratio * 10 + specialization_bonus, path, overlap, resume_text))
     ranked.sort(reverse=True, key=lambda item: item[0])
     if not ranked:
         return None
-    ratio, path, overlap = ranked[0]
-    score = round(min(10, 3 + ratio * 7), 1) if overlap else 2.5
+    rank_score, path, overlap, resume_text = ranked[0]
+    score = round(min(10, 2.5 + rank_score * .6), 1) if overlap else 2.5
+    missing_required = sorted(required_skills - set(overlap))
+    lacks_experience = bool(minimum_years and (
+        "intern" in resume_text and not re.search(rf"\b{minimum_years}\+?\s+years", resume_text)
+    ))
+    if lacks_experience:
+        score = min(score, 4.9)
+    if len(missing_required) >= 2:
+        score = min(score, 5.4)
     recommendation = "Apply" if score >= 7 else "Consider" if score >= 5 else "Skip"
-    summary = "Strong overlap in " + ", ".join(overlap[:4]) if overlap else "The resume does not show the role's core skills."
+    if lacks_experience:
+        summary = f"Requires {minimum_years}+ years excluding internships; the resume does not show that experience."
+    elif missing_required:
+        summary = "Missing required: " + ", ".join(missing_required[:4]) + "."
+    elif overlap:
+        summary = "Strong overlap in " + ", ".join(overlap[:4]) + "."
+    else:
+        summary = "The resume does not show the role's core skills."
     return {
         "file": Path(path).name,
         "score": score,

@@ -22,6 +22,22 @@ class ResumeAdvisorTests(unittest.TestCase):
             self.assertIn('summary', result)
             self.assertEqual(errors, [])
 
+    def test_hard_experience_requirement_can_make_role_a_skip(self):
+        with tempfile.TemporaryDirectory() as folder:
+            full_stack = Path(folder, 'FullStack_Resume.pdf.txt')
+            java = Path(folder, 'Java_Resume.pdf.txt')
+            full_stack.write_text('Full-Stack Developer intern React TypeScript REST SQL', encoding='utf-8')
+            java.write_text('Java Developer intern React TypeScript REST SQL Agile', encoding='utf-8')
+            job = '''Full stack role using React, TypeScript, C# and .NET.
+            Qualifications: Minimum 4+ years professional experience excluding internship.
+            Strong React and TypeScript. Strong C# and .NET experience.'''
+            with patch.dict('os.environ', {}, clear=True):
+                result, _ = recommend(job, [full_stack, java])
+            self.assertEqual(result['file'], 'FullStack_Resume.pdf.txt')
+            self.assertEqual(result['recommendation'], 'Skip')
+            self.assertLess(result['score'], 5)
+            self.assertFalse(result['modification_needed'])
+
 
 if __name__ == '__main__':
     unittest.main()
