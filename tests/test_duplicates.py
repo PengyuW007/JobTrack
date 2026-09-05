@@ -29,6 +29,16 @@ class DuplicateTests(unittest.TestCase):
         self.assertEqual(canonical_url('https://example.com/job?id=1&utm_source=email'), canonical_url('https://example.com/job?id=1'))
         self.assertNotEqual(canonical_url('https://example.com/job?id=1'), canonical_url('https://example.com/job?id=2'))
 
+    def test_indeed_and_linkedin_tracking_urls(self):
+        self.assertEqual(
+            canonical_url('https://ca.indeed.com/viewjob?jk=abc123&from=shareddesktop_copy'),
+            'https://ca.indeed.com/viewjob?jk=abc123'
+        )
+        self.assertEqual(
+            canonical_url('https://www.linkedin.com/jobs/view/software-engineer-987654/?trk=public_jobs'),
+            'https://linkedin.com/jobs/view/987654'
+        )
+
     def test_full_email_evidence_and_all_dates_outside_chart(self):
         self.db.save_evidence(self.job, 'x' * 700 + ' https://example.com/jobs/1?utm_source=email')
         self.job.gmail_id = 'two'
@@ -50,7 +60,7 @@ class DuplicateTests(unittest.TestCase):
     def test_title_only_is_not_definitive(self):
         match = self.service.search(Posting('https://example.com/new', 'Acme', 'Software Engineer'))[0]
         self.assertEqual(match['score'], 80)
-        self.assertIn('最早相关记录', match['dates'])
+        self.assertEqual(match['dates'], '2020-02-03')
         self.assertEqual(self.service.search(Posting('https://example.com/new', '', 'Software Engineer')), [])
 
     def test_schema_migration_is_idempotent(self):

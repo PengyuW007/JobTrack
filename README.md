@@ -162,3 +162,9 @@ else:
 历史数据的限制：原版只保存 500 字符的邮件摘要，同公司岗位会合并。新增证据表保存每封相关邮件的原始日期和正文；“投递确认邮件”日期来自被识别为 Applied 的邮件，否则只标注“最早相关记录”。多封确认邮件不一定表示多次投递。邮件不包含职位描述时，无法凭空恢复旧描述，也无法保证识别所有重发岗位。“未找到匹配”不代表确定未投递。当前数据来源仍为 Gmail 和已有 SQLite 记录，不会扫描本地简历文件。
 
 验证：`venv\Scripts\python.exe -m unittest discover -s tests -v`
+
+### Resume recommendation
+
+The English workbench uses a compact two-column layout: controls are on the left and the date-filtered funnel is on the right. Paste an Indeed or LinkedIn URL to parse it, check all application history, and recommend one of the selected PDF, DOCX, TXT, or Markdown resumes.
+
+Set `OPENAI_API_KEY` to enable AI selection through the OpenAI Responses API. `JOBTRACK_OPENAI_MODEL` can override the default model. Without an API key, JobTrack uses a local skill-overlap score and labels the result `Local match`.

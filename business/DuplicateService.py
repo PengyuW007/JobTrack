@@ -19,12 +19,21 @@ def normalize(text):
 def canonical_url(url):
     parts = urlsplit(html.unescape(url.strip()).rstrip('.,);'))
     if parts.scheme.lower() not in ('http', 'https') or not parts.hostname or parts.username or parts.password:
-        raise ValueError('请输入完整的 http:// 或 https:// 职位网址。')
+        raise ValueError('Enter a complete http:// or https:// job URL.')
     # Preserve job identifiers in query parameters; remove only known tracking keys.
-    query = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True)
-             if not k.lower().startswith('utm_') and k.lower() not in
-             ('fbclid', 'gclid', 'trk', 'trackingid')]
-    return urlunsplit(('https', parts.netloc.lower(), parts.path.rstrip('/') or '/',
+    host = parts.netloc.lower().removeprefix('www.')
+    params = dict(parse_qsl(parts.query, keep_blank_values=True))
+    path = parts.path.rstrip('/') or '/'
+    if host.endswith('indeed.com') and params.get('jk'):
+        path, params = '/viewjob', {'jk': params['jk']}
+    elif host.endswith('linkedin.com'):
+        match = re.search(r'/jobs/view/(?:[^/?]+-)?(\d+)', path)
+        if match:
+            path, params = f'/jobs/view/{match.group(1)}', {}
+    query = [(k, v) for k, v in params.items()
+             if not k.lower().startswith(('utm_', 'refid')) and k.lower() not in
+             ('fbclid', 'gclid', 'trk', 'trackingid', 'tracking', 'from', 'source')]
+    return urlunsplit(('https', host, path,
                        urlencode(sorted(query)), ''))
 
 
@@ -106,7 +115,7 @@ def parse_posting(url, source):
         company = company.get('name', '') if isinstance(company, dict) else str(company)
         description = html.unescape(re.sub('<[^>]+>', ' ', str(node.get('description', ''))))
         return Posting(url, company, str(node.get('title', '')), description)
-    return Posting(url, warning='页面没有唯一的结构化职位信息。请补充公司、岗位名称和职位描述后查重。')
+    return Posting(url, warning='This page could not be parsed automatically.')
 
 
 def fetch_posting(url):
@@ -117,7 +126,7 @@ def fetch_posting(url):
         canonical_url(current)
         addresses = socket.getaddrinfo(parts.hostname, parts.port or (443 if parts.scheme == 'https' else 80))
         if not addresses or any(not ipaddress.ip_address(a[4][0]).is_global for a in addresses):
-            raise ValueError('仅支持公开招聘页面网址。')
+            raise ValueError('Only public job-page URLs are supported.')
         with requests.get(current, timeout=(5, 15), allow_redirects=False, stream=True,
                           headers={'User-Agent': 'JobTrack/1.0'}) as response:
             if response.is_redirect:
@@ -128,9 +137,9 @@ def fetch_posting(url):
             for chunk in response.iter_content(65536):
                 chunks.extend(chunk)
                 if len(chunks) > 3_000_000:
-                    raise ValueError('页面过大，请手动填写职位信息。')
+                    raise ValueError('The job page is too large to parse.')
             return parse_posting(url, chunks.decode(response.encoding or 'utf-8', errors='replace'))
-    raise ValueError('页面重定向过多，请使用最终职位网址。')
+    raise ValueError('The job URL redirects too many times.')
 
 
 class DuplicateService:
@@ -155,7 +164,7 @@ class DuplicateService:
             events = evidence.get(key, [])
             texts = [subject or '', preview or ''] + [e[2] + ' ' + e[3] for e in events]
             exact = any(target in urls_in(text) for text in texts)
-            reason = '历史邮件包含相同网址' if exact else ''
+            reason = 'Same URL found in application email' if exact else ''
             score = 100 if exact else 0
             candidates = [(company, position, '')]
             # Legacy company fields often contain a sender name/address. Use
@@ -168,7 +177,7 @@ class DuplicateService:
                     candidates.append((posting.company, posting.position, ''))
             for url, org, title, description in snapshots.get(key, []):
                 if canonical_url(url) == target:
-                    score, reason = 100, '已关联的历史职位网址相同'
+                    score, reason = 100, 'Same saved job URL'
                 candidates.append((org, title, description))
             for org, title, description in candidates:
                 same_company = normalize(posting.company) and normalize(posting.company) == normalize(org)
@@ -177,14 +186,14 @@ class DuplicateService:
                     continue
                 similarity = SequenceMatcher(None, title_a, title_b).ratio()
                 if similarity >= .86 and score < 80:
-                    score, reason = 80, '同公司、相同或近似岗位名称；需核对描述／地点／级别'
+                    score, reason = 80, 'Same company and similar title'
                 if similarity >= .86 and len(normalize(description)) >= 100 and len(normalize(posting.description)) >= 100:
                     desc_similarity = SequenceMatcher(None, normalize(description), normalize(posting.description), autojunk=False).ratio()
                     if desc_similarity >= .92 and score < 95:
-                        score, reason = 95, '公司、岗位及已保存描述高度一致，疑似更换网址重新发布'
+                        score, reason = 95, 'Likely repost: company, title, and description match'
             if score:
                 dates = sorted({e[0] for e in events if e[1] == 'Applied'})
-                date_label = '投递确认邮件：' + '、'.join(dates) if dates else '最早相关记录：' + created + '（未必为实际投递日）'
+                date_label = ', '.join(date[:10] for date in dates) if dates else created[:10]
                 matches.append(dict(key=key, company=company, position=position, dates=date_label,
                                     status=status, reason=reason, score=score))
         return sorted(matches, key=lambda item: -item['score'])
