@@ -59,6 +59,10 @@ class DataAccess:
             enabled INTEGER NOT NULL DEFAULT 1,
             updated_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS app_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
         """)
         columns = {row[1] for row in self.cursor.execute("PRAGMA table_info(sync_metadata)")}
         if "last_sync_at" not in columns:
@@ -203,6 +207,18 @@ END,
 
     def delete_resume(self, resume_id):
         self.conn.execute("DELETE FROM resumes WHERE id = ?", (resume_id,))
+        self.conn.commit()
+
+    def get_setting(self, key, default=None):
+        row = self.conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
+        return row[0] if row else default
+
+    def set_setting(self, key, value):
+        self.conn.execute(
+            "INSERT INTO app_settings(key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value)
+        )
         self.conn.commit()
 
     def close(self):

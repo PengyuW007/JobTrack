@@ -19,6 +19,14 @@ class ResumeAdvisorTests(unittest.TestCase):
         self.assertIn('Decision: SKIP', output)
         self.assertIn('Local assessment', output)
 
+    def test_ai_assessment_names_the_actual_model(self):
+        output = format_assessment({
+            'file': 'FullStack.pdf', 'score': 8.1,
+            'modification_needed': False, 'recommendation': 'Apply',
+            'summary': 'Strong match.', 'source': 'AI', 'model': 'gpt-5.6-terra'
+        })
+        self.assertIn('AI assessment · gpt-5.6-terra', output)
+
     def test_local_resume_recommendation(self):
         with tempfile.TemporaryDirectory() as folder:
             backend = Path(folder, 'backend.txt')

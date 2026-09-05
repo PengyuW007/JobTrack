@@ -81,6 +81,9 @@ class DuplicateTests(unittest.TestCase):
         self.assertTrue(self.db.get_last_sync_at().startswith('2026-'))
         self.db.delete_resume(resume_id)
         self.assertEqual(self.db.get_resumes(), [])
+        self.assertEqual(self.db.get_setting('assessment_model', 'default'), 'default')
+        self.db.set_setting('assessment_model', 'gpt-6-astra')
+        self.assertEqual(self.db.get_setting('assessment_model'), 'gpt-6-astra')
 
     def test_structured_page_and_ambiguous_page(self):
         node = {'@type': 'JobPosting', 'title': 'Engineer', 'hiringOrganization': {'name': 'Acme'}, 'description': '<p>Work &amp; build</p>'}

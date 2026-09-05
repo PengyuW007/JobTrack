@@ -92,10 +92,11 @@ def local_recommendation(description, resumes):
     }
 
 
-def ai_recommendation(description, resumes):
+def ai_recommendation(description, resumes, model=None):
     fallback = local_recommendation(description, resumes)
     api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
+    model = model or os.getenv("JOBTRACK_OPENAI_MODEL", "gpt-5.6-terra")
+    if not api_key or model == "local":
         return fallback
     resume_text = "\n\n".join(f"RESUME: {Path(path).name}\n{text[:12000]}" for path, text in resumes)
     schema = {
@@ -111,7 +112,7 @@ def ai_recommendation(description, resumes):
         "additionalProperties": False,
     }
     payload = {
-        "model": os.getenv("JOBTRACK_OPENAI_MODEL", "gpt-5.4-mini"),
+        "model": model,
         "store": False,
         "input": [
             {"role": "developer", "content": "Choose the strongest resume and assess whether the candidate should apply. Score job fit from 0 to 10 using only supplied evidence. Recommend Apply, Consider, or Skip. Set modification_needed only when tailoring could materially improve a viable application. Keep summary under 25 words."},
@@ -136,12 +137,13 @@ def ai_recommendation(description, resumes):
             return fallback
         result["score"] = round(float(result["score"]), 1)
         result["source"] = "AI"
+        result["model"] = model
         return result
     except (requests.RequestException, KeyError, ValueError, TypeError, StopIteration, json.JSONDecodeError):
         return fallback
 
 
-def recommend(description, paths):
+def recommend(description, paths, model=None):
     readable, errors = [], []
     for path in paths:
         try:
@@ -150,4 +152,4 @@ def recommend(description, paths):
                 readable.append((path, text))
         except (OSError, ValueError, zipfile.BadZipFile) as error:
             errors.append(f"{Path(path).name}: {error}")
-    return (ai_recommendation(description, readable) if readable else None), errors
+    return (ai_recommendation(description, readable, model) if readable else None), errors

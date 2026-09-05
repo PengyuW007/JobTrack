@@ -1,4 +1,5 @@
 import queue
+import os
 import threading
 import tkinter as tk
 from datetime import datetime, timedelta
@@ -15,11 +16,18 @@ from business.ResumeAdvisor import recommend
 from persistence.DataAccessJob import DataAccessJob
 from visualization.DateRangeDialog import DateRangeDialog
 
+MODEL_OPTIONS = {
+    "GPT-5.6 Terra (Recommended)": "gpt-5.6-terra",
+    "GPT-6 Astra (Best quality)": "gpt-6-astra",
+    "GPT-5.6 Luna (Lower cost)": "gpt-5.6-luna",
+    "Local assessment": "local",
+}
+
 
 def format_assessment(result):
     stars = "★" * max(1, min(5, round(result["score"] / 2)))
     modification = "Yes" if result["modification_needed"] else "No"
-    source = "AI assessment" if result["source"] == "AI" else "Local assessment"
+    source = f"AI assessment · {result.get('model', '')}".rstrip(" ·") if result["source"] == "AI" else "Local assessment"
     return (
         f"Recommended: {result['file']}\n"
         f"Match: {stars}  {result['score']:.1f}/10  ·  Modify: {modification}\n"
@@ -82,20 +90,32 @@ class Workbench:
         box = ttk.LabelFrame(self.left, text="Job check", padding=10)
         box.grid(row=2, column=0, sticky="ew", pady=8)
         box.columnconfigure(0, weight=1)
+        saved_model = self.db.get_setting("assessment_model", "gpt-5.6-terra")
+        selected_label = next((label for label, model in MODEL_OPTIONS.items() if model == saved_model), next(iter(MODEL_OPTIONS)))
+        model_row = ttk.Frame(box)
+        model_row.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 7))
+        ttk.Label(model_row, text="Model").grid(row=0, column=0, sticky="w")
+        self.model_choice = tk.StringVar(value=selected_label)
+        self.model_selector = ttk.Combobox(model_row, textvariable=self.model_choice, values=list(MODEL_OPTIONS), state="readonly", width=28)
+        self.model_selector.grid(row=0, column=1, padx=(8, 0), sticky="ew")
+        self.model_selector.bind("<<ComboboxSelected>>", self.change_model)
+        self.model_status = tk.StringVar()
+        ttk.Label(model_row, textvariable=self.model_status, wraplength=330).grid(row=1, column=0, columnspan=2, sticky="w", pady=(3, 0))
+        self.update_model_status()
         self.url = tk.StringVar()
         entry = ttk.Entry(box, textvariable=self.url)
-        entry.grid(row=0, column=0, sticky="ew")
+        entry.grid(row=1, column=0, sticky="ew")
         entry.bind("<<Paste>>", lambda _event: self.root.after_idle(self.lookup_url))
         entry.bind("<Return>", lambda _event: self.lookup_url())
         self.clear_button = ttk.Button(box, text="Clear", command=self.clear_job)
-        self.clear_button.grid(row=0, column=1, padx=(6, 0))
+        self.clear_button.grid(row=1, column=1, padx=(6, 0))
         self.job_title = tk.StringVar(value="Paste a job URL from any public platform")
-        ttk.Label(box, textvariable=self.job_title, font=("Segoe UI", 10, "bold"), wraplength=330).grid(row=1, column=0, columnspan=2, sticky="w", pady=(10, 2))
+        ttk.Label(box, textvariable=self.job_title, font=("Segoe UI", 10, "bold"), wraplength=330).grid(row=2, column=0, columnspan=2, sticky="w", pady=(10, 2))
         self.lookup_status = tk.StringVar()
-        ttk.Label(box, textvariable=self.lookup_status, wraplength=330).grid(row=2, column=0, columnspan=2, sticky="w")
+        ttk.Label(box, textvariable=self.lookup_status, wraplength=330).grid(row=3, column=0, columnspan=2, sticky="w")
         self.resume_result = tk.StringVar()
         ttk.Label(box, textvariable=self.resume_result, wraplength=355).grid(
-            row=3, column=0, columnspan=2, sticky="w", pady=(8, 0)
+            row=4, column=0, columnspan=2, sticky="w", pady=(8, 0)
         )
         resumes = ttk.LabelFrame(self.left, text="Resumes", padding=10)
         resumes.grid(row=3, column=0, sticky="ew", pady=8)
@@ -129,6 +149,28 @@ class Workbench:
         self.axes = self.figure.add_subplot(111)
         self.canvas = FigureCanvasTkAgg(self.figure, master=self.right)
         self.canvas.get_tk_widget().grid(row=1, column=0, sticky="nsew")
+
+    def selected_model(self):
+        return MODEL_OPTIONS[self.model_choice.get()]
+
+    def update_model_status(self, result=None):
+        model = self.selected_model()
+        if result and result.get("source") == "AI":
+            self.model_status.set(f"Current: {result['model']}")
+        elif model == "local":
+            self.model_status.set("Current: Local assessment")
+        elif not os.getenv("OPENAI_API_KEY"):
+            self.model_status.set("Current: Local assessment — API key not configured")
+        elif result:
+            self.model_status.set("Current: Local assessment — AI request unavailable")
+        else:
+            self.model_status.set(f"Selected: {model}")
+
+    def change_model(self, _event=None):
+        self.db.set_setting("assessment_model", self.selected_model())
+        self.update_model_status()
+        if self.posting and self.posting.description and self.resume_paths:
+            self.start_resume_match()
 
     def set_history_visible(self, visible):
         if visible:
@@ -297,10 +339,12 @@ class Workbench:
     def start_resume_match(self):
         self.resume_result.set("Comparing resumes…")
         job_context = f"{self.posting.position}\n{self.posting.description}"
-        threading.Thread(target=self._resume_worker, args=(job_context, tuple(self.resume_paths)), daemon=True).start()
+        model = self.selected_model()
+        threading.Thread(target=self._resume_worker, args=(job_context, tuple(self.resume_paths), model), daemon=True).start()
 
-    def _resume_worker(self, description, paths):
-        self.events.put(("resume", recommend(description, paths)))
+    def _resume_worker(self, description, paths, model):
+        result, errors = recommend(description, paths, model)
+        self.events.put(("resume", (result, errors)))
 
     def show_details(self, _event=None):
         selected = self.results.selection()
@@ -332,6 +376,7 @@ class Workbench:
                 elif kind == "resume":
                     result, errors = value
                     if result:
+                        self.update_model_status(result)
                         self.resume_result.set(format_assessment(result))
                     else:
                         self.resume_result.set(errors[0] if errors else "No readable resumes found")
