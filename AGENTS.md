@@ -8,3 +8,17 @@
 - GitHub releases must contain application code and public documentation only. Users must supply their own Google OAuth credentials and authorization token locally.
 - Windows may use `Start JobTrack.vbs`. Do not present that launcher as compatible with macOS or Linux.
 - Browser-based parsing must not require Google Chrome specifically. Prefer automatic selection among supported installed browsers and document any browser automation requirements.
+
+# Commit message rules
+
+Follow the Areone Development Handbook commit standard for every commit:
+https://github.com/PengyuW007/Areone-Development-Handbook/blob/main/Guidance/Commit_Message_Guide.md
+
+- Use the format `<type>: <short summary>`.
+- Use one of these types: `feat`, `fix`, `refactor`, `perf`, `docs`, `style`, `test`, `chore`, `build`, `ci`, `ops`, or `revert`.
+- Write the summary in English, in imperative mood, and describe the concrete change.
+- Keep the summary between 50 and 72 characters when practical.
+- Do not end the summary with a period.
+- Keep each commit limited to one logical change. Split unrelated work into separate commits.
+- For larger commits, add a concise body with bullet points describing the major changes.
+- Before committing, confirm that the project builds, compilation succeeds, tests pass, debug code is removed, and no secrets or passwords are staged.
