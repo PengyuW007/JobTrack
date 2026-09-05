@@ -284,7 +284,8 @@ class Workbench:
 
     def start_resume_match(self):
         self.resume_result.set("Comparing resumes…")
-        threading.Thread(target=self._resume_worker, args=(self.posting.description, tuple(self.resume_paths)), daemon=True).start()
+        job_context = f"{self.posting.position}\n{self.posting.description}"
+        threading.Thread(target=self._resume_worker, args=(job_context, tuple(self.resume_paths)), daemon=True).start()
 
     def _resume_worker(self, description, paths):
         self.events.put(("resume", recommend(description, paths)))

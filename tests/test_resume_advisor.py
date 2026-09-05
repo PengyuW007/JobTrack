@@ -50,6 +50,16 @@ class ResumeAdvisorTests(unittest.TestCase):
             self.assertLess(result['score'], 5)
             self.assertFalse(result['modification_needed'])
 
+    def test_job_title_selects_specialized_resume(self):
+        with tempfile.TemporaryDirectory() as folder:
+            sde = Path(folder, 'SDE_Resume.txt')
+            qa = Path(folder, 'QA_Resume.txt')
+            sde.write_text('Software developer', encoding='utf-8')
+            qa.write_text('Quality assurance analyst and tester', encoding='utf-8')
+            with patch.dict('os.environ', {}, clear=True):
+                result, _ = recommend('Quality Assurance Developer', [sde, qa])
+            self.assertEqual(result['file'], 'QA_Resume.txt')
+
 
 if __name__ == '__main__':
     unittest.main()

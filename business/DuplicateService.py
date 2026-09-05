@@ -144,6 +144,7 @@ def _fetch_direct(url):
 
 def _fetch_with_browser(url):
     from selenium import webdriver
+    from selenium.webdriver.common.by import By
     from selenium.webdriver.support.ui import WebDriverWait
 
     options = webdriver.ChromeOptions()
@@ -159,7 +160,36 @@ def _fetch_with_browser(url):
         WebDriverWait(driver, 10).until(
             lambda active: active.execute_script('return document.readyState') == 'complete'
         )
-        return parse_posting(url, driver.page_source)
+        posting = parse_posting(url, driver.page_source)
+        if posting.position:
+            return posting
+
+        def text_from(selectors):
+            for selector in selectors:
+                elements = driver.find_elements(By.CSS_SELECTOR, selector)
+                if elements and elements[0].text.strip():
+                    return elements[0].text.strip()
+            return ''
+
+        position = text_from((
+            'h1.top-card-layout__title',
+            '.job-details-jobs-unified-top-card__job-title h1',
+            'h1',
+        ))
+        company = text_from((
+            '.topcard__org-name-link',
+            '.job-details-jobs-unified-top-card__company-name',
+            '.top-card-layout__card .topcard__flavor a',
+        ))
+        description = text_from((
+            '.show-more-less-html__markup',
+            '.jobs-description__content',
+            '.jobs-box__html-content',
+            '[class*="job-description"]',
+        ))
+        if position and description:
+            return Posting(url, company, position, description)
+        return posting
     finally:
         driver.quit()
 

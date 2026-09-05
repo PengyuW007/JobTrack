@@ -55,7 +55,8 @@ def local_recommendation(description, resumes):
         name = Path(path).stem.casefold()
         specialization_bonus = max(
             (1.5 for label, aliases in SPECIALIZATIONS.items()
-             if label in job_text and any(alias in name for alias in aliases)),
+             if any(alias in job_text for alias in (label,) + aliases)
+             and any(alias in name for alias in aliases)),
             default=0,
         )
         ranked.append((skill_ratio * 10 + specialization_bonus, path, overlap, resume_text))
