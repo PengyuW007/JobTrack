@@ -109,15 +109,18 @@ class Workbench:
         ttk.Button(resumes, text="Replace", command=self.replace_resume).grid(row=1, column=1, pady=(6, 0))
         ttk.Button(resumes, text="Rename", command=self.rename_resume).grid(row=1, column=2, pady=(6, 0))
         ttk.Button(resumes, text="Remove", command=self.remove_resume).grid(row=1, column=3, sticky="e", pady=(6, 0))
-        ttk.Label(self.left, text="Application history", font=("Segoe UI", 10, "bold")).grid(row=4, column=0, sticky="w", pady=(10, 4))
+        self.history_label = ttk.Label(self.left, text="Application history", font=("Segoe UI", 10, "bold"))
+        self.history_label.grid(row=4, column=0, sticky="w", pady=(10, 4))
         self.results = ttk.Treeview(self.left, columns=("company", "position", "date"), show="headings", height=4)
         for key, label, width in (("company", "Company", 90), ("position", "Role", 145), ("date", "Applied", 85)):
             self.results.heading(key, text=label)
             self.results.column(key, width=width, minwidth=55)
         self.results.grid(row=7, column=0, sticky="nsew")
         self.details = tk.StringVar()
-        ttk.Label(self.left, textvariable=self.details, wraplength=340).grid(row=8, column=0, sticky="w", pady=(6, 0))
+        self.details_label = ttk.Label(self.left, textvariable=self.details, wraplength=340)
+        self.details_label.grid(row=8, column=0, sticky="w", pady=(6, 0))
         self.results.bind("<<TreeviewSelect>>", self.show_details)
+        self.set_history_visible(False)
 
     def _build_chart(self):
         ttk.Label(self.right, text="Application funnel", font=("Segoe UI", 14, "bold")).grid(row=0, column=0, sticky="w")
@@ -125,6 +128,17 @@ class Workbench:
         self.axes = self.figure.add_subplot(111)
         self.canvas = FigureCanvasTkAgg(self.figure, master=self.right)
         self.canvas.get_tk_widget().grid(row=1, column=0, sticky="nsew")
+
+    def set_history_visible(self, visible):
+        if visible:
+            self.history_label.grid()
+            self.results.grid()
+            self.details_label.grid()
+        else:
+            self.history_label.grid_remove()
+            self.results.grid_remove()
+            self.details_label.grid_remove()
+            self.details.set("")
 
     def _build_footer(self):
         footer = ttk.Frame(self.root, padding=(18, 6, 18, 12))
@@ -237,6 +251,7 @@ class Workbench:
         self.lookup_status.set("")
         self.resume_result.set("")
         self.results.delete(*self.results.get_children())
+        self.set_history_visible(False)
         threading.Thread(target=self._fetch_worker, args=(url,), daemon=True).start()
 
     def _fetch_worker(self, url):
@@ -253,6 +268,7 @@ class Workbench:
         self.results.delete(*self.results.get_children())
         for index, match in enumerate(self.matches):
             self.results.insert("", "end", iid=str(index), values=(match["company"], match["position"], match["dates"]))
+        self.set_history_visible(bool(self.matches))
         if self.matches:
             self.lookup_status.set(f"Previously applied — {len(self.matches)} match(es)")
         elif posting.position:
