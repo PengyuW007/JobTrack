@@ -34,6 +34,7 @@ class Workbench:
         self.db, self.dao = db, DataAccessJob(db.conn)
         self.duplicates, self.synchronize = DuplicateService(db.conn), synchronize
         self.events, self.resume_paths, self.matches, self.posting = queue.Queue(), [], [], None
+        self.analyzing = False
         self.root = tk.Tk()
         self.root.title("JobTrack")
         self.root.geometry("1180x900")
@@ -86,8 +87,8 @@ class Workbench:
         entry.grid(row=0, column=0, sticky="ew")
         entry.bind("<<Paste>>", lambda _event: self.root.after_idle(self.lookup_url))
         entry.bind("<Return>", lambda _event: self.lookup_url())
-        self.lookup_button = ttk.Button(box, text="Check", command=self.lookup_url)
-        self.lookup_button.grid(row=0, column=1, padx=(6, 0))
+        self.clear_button = ttk.Button(box, text="Clear", command=self.clear_job)
+        self.clear_button.grid(row=0, column=1, padx=(6, 0))
         self.job_title = tk.StringVar(value="Paste a job URL from any public platform")
         ttk.Label(box, textvariable=self.job_title, font=("Segoe UI", 10, "bold"), wraplength=330).grid(row=1, column=0, columnspan=2, sticky="w", pady=(10, 2))
         self.lookup_status = tk.StringVar()
@@ -244,15 +245,26 @@ class Workbench:
 
     def lookup_url(self):
         url = self.url.get().strip()
-        if not url or str(self.lookup_button["state"]) == "disabled":
+        if not url or self.analyzing:
             return
-        self.lookup_button.configure(state="disabled")
+        self.analyzing = True
         self.job_title.set("Analyzing job…")
         self.lookup_status.set("")
         self.resume_result.set("")
         self.results.delete(*self.results.get_children())
         self.set_history_visible(False)
         threading.Thread(target=self._fetch_worker, args=(url,), daemon=True).start()
+
+    def clear_job(self):
+        self.analyzing = False
+        self.url.set("")
+        self.posting = None
+        self.matches = []
+        self.job_title.set("Paste a job URL from any public platform")
+        self.lookup_status.set("")
+        self.resume_result.set("")
+        self.results.delete(*self.results.get_children())
+        self.set_history_visible(False)
 
     def _fetch_worker(self, url):
         try:
@@ -314,7 +326,7 @@ class Workbench:
             while True:
                 kind, value = self.events.get_nowait()
                 if kind == "posting":
-                    self.lookup_button.configure(state="normal")
+                    self.analyzing = False
                     if value.url == self.url.get().strip():
                         self.show_posting(value)
                 elif kind == "resume":
