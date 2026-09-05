@@ -77,6 +77,18 @@ class ResumeAdvisorTests(unittest.TestCase):
             result, _ = recommend('Quality Assurance Developer', [sde, qa], 'local')
             self.assertEqual(result['file'], 'QA_Resume.txt')
 
+    def test_quality_engineering_title_beats_generic_full_stack_overlap(self):
+        with tempfile.TemporaryDirectory() as folder:
+            full_stack = Path(folder, 'FullStack_Resume.txt')
+            qa = Path(folder, 'QA_Resume.txt')
+            full_stack.write_text('Python JavaScript TypeScript React SQL REST Agile', encoding='utf-8')
+            qa.write_text('Python Playwright TypeScript API testing regression testing', encoding='utf-8')
+            job = '''Quality Engineering Specialist
+            Build automated tests with Python and TypeScript. Work with REST APIs,
+            developers, agile teams, SQL services, and full-stack applications.'''
+            result, _ = recommend(job, [full_stack, qa], 'local')
+            self.assertEqual(result['file'], 'QA_Resume.txt')
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -14,9 +14,26 @@ SKILLS = {"python", "java", "javascript", "typescript", "react", "angular", "vue
 SPECIALIZATIONS = {
     "full stack": ("fullstack", "full stack", "full-stack"),
     "java": ("java",),
-    "qa": ("qa", "quality assurance"),
+    "qa": (
+        "qa", "quality assurance", "quality engineer", "quality engineering",
+        "test automation", "automation tester", "automation engineer",
+        "test engineer", "software engineer in test", "sdet", "tester",
+    ),
     "data": ("data", "analytics"),
 }
+
+
+def detected_specializations(text):
+    normalized = re.sub(r"[^a-z0-9+#.]+", " ", text.casefold())
+    padded = f" {normalized} "
+    detected = set()
+    for label, aliases in SPECIALIZATIONS.items():
+        for alias in aliases:
+            alias_normalized = re.sub(r"[^a-z0-9+#.]+", " ", alias.casefold()).strip()
+            if f" {alias_normalized} " in padded:
+                detected.add(label)
+                break
+    return detected
 
 
 def read_resume(path):
@@ -79,6 +96,8 @@ def api_error_message(response=None, error=None):
 
 def local_recommendation(description, resumes):
     job_text = description.casefold()
+    job_title = description.splitlines()[0] if description.splitlines() else description
+    title_specializations = detected_specializations(job_title)
     job_skills = {skill for skill in SKILLS if skill in job_text}
     qualification_text = job_text.split("qualifications", 1)[-1]
     required_skills = {
@@ -96,12 +115,12 @@ def local_recommendation(description, resumes):
         overlap = sorted(job_skills & {skill for skill in SKILLS if skill in resume_text})
         skill_ratio = sum(weights[skill] for skill in overlap) / total_weight
         name = Path(path).stem.casefold()
-        specialization_bonus = max(
-            (1.5 for label, aliases in SPECIALIZATIONS.items()
-             if any(alias in job_text for alias in (label,) + aliases)
-             and any(alias in name for alias in aliases)),
-            default=0,
-        )
+        resume_specializations = detected_specializations(name)
+        specialization_bonus = 0
+        if title_specializations:
+            specialization_bonus = 4 if title_specializations & resume_specializations else -2 if resume_specializations else 0
+        elif detected_specializations(job_text) & resume_specializations:
+            specialization_bonus = 1.5
         ranked.append((skill_ratio * 10 + specialization_bonus, path, overlap, resume_text))
     ranked.sort(reverse=True, key=lambda item: item[0])
     if not ranked:
