@@ -221,8 +221,14 @@ class Workbench:
                 elif kind == "resume":
                     result, errors = value
                     if result:
-                        suffix = f" ({result['score']}%)" if result.get("score") is not None else ""
-                        self.resume_result.set(f"Recommended: {result['file']}{suffix}\n{result['reason']} · {result['source']}")
+                        stars = "★" * max(1, min(5, round(result["score"] / 2)))
+                        modification = "Yes" if result["modification_needed"] else "No"
+                        self.resume_result.set(
+                            f"Recommended Resume\n{result['file']}\n\n"
+                            f"Match\n{stars}  {result['score']:.1f}/10\n\n"
+                            f"Modification Needed\n{modification}\n\n"
+                            f"Recommendation\n{result['recommendation']} — {result['summary']}"
+                        )
                     else:
                         self.resume_result.set(errors[0] if errors else "No readable resumes found")
                 else:

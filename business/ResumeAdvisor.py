@@ -36,9 +36,18 @@ def local_recommendation(description, resumes):
     ranked.sort(reverse=True, key=lambda item: item[0])
     if not ranked:
         return None
-    score, path, overlap = ranked[0]
-    reason = "Matching skills: " + ", ".join(overlap[:6]) if overlap else "No clear skill match found"
-    return {"file": Path(path).name, "reason": reason, "source": "Local match", "score": round(score * 100)}
+    ratio, path, overlap = ranked[0]
+    score = round(min(10, 3 + ratio * 7), 1) if overlap else 2.5
+    recommendation = "Apply" if score >= 7 else "Consider" if score >= 5 else "Skip"
+    summary = "Strong overlap in " + ", ".join(overlap[:4]) if overlap else "The resume does not show the role's core skills."
+    return {
+        "file": Path(path).name,
+        "score": score,
+        "modification_needed": recommendation != "Skip" and score < 8,
+        "recommendation": recommendation,
+        "summary": summary,
+        "source": "Local match",
+    }
 
 
 def ai_recommendation(description, resumes):
@@ -47,12 +56,23 @@ def ai_recommendation(description, resumes):
     if not api_key:
         return fallback
     resume_text = "\n\n".join(f"RESUME: {Path(path).name}\n{text[:12000]}" for path, text in resumes)
-    schema = {"type": "object", "properties": {"file": {"type": "string"}, "reason": {"type": "string"}}, "required": ["file", "reason"], "additionalProperties": False}
+    schema = {
+        "type": "object",
+        "properties": {
+            "file": {"type": "string"},
+            "score": {"type": "number", "minimum": 0, "maximum": 10},
+            "modification_needed": {"type": "boolean"},
+            "recommendation": {"type": "string", "enum": ["Apply", "Consider", "Skip"]},
+            "summary": {"type": "string"},
+        },
+        "required": ["file", "score", "modification_needed", "recommendation", "summary"],
+        "additionalProperties": False,
+    }
     payload = {
         "model": os.getenv("JOBTRACK_OPENAI_MODEL", "gpt-5.4-mini"),
         "store": False,
         "input": [
-            {"role": "developer", "content": "Choose the strongest resume for this job using only supplied evidence. Keep the reason under 25 words."},
+            {"role": "developer", "content": "Choose the strongest resume and assess whether the candidate should apply. Score job fit from 0 to 10 using only supplied evidence. Recommend Apply, Consider, or Skip. Set modification_needed only when tailoring could materially improve a viable application. Keep summary under 25 words."},
             {"role": "user", "content": f"JOB DESCRIPTION:\n{description[:18000]}\n\n{resume_text}"},
         ],
         "text": {"format": {"type": "json_schema", "name": "resume_choice", "strict": True, "schema": schema}},
@@ -72,7 +92,8 @@ def ai_recommendation(description, resumes):
         result = json.loads(output_text)
         if result.get("file") not in {Path(path).name for path, _ in resumes}:
             return fallback
-        result.update(source="AI", score=None)
+        result["score"] = round(float(result["score"]), 1)
+        result["source"] = "AI"
         return result
     except (requests.RequestException, KeyError, ValueError, TypeError, StopIteration, json.JSONDecodeError):
         return fallback
