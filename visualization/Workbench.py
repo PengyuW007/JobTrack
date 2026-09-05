@@ -1,5 +1,4 @@
 import queue
-import os
 import threading
 import tkinter as tk
 from datetime import datetime, timedelta
@@ -12,7 +11,7 @@ from matplotlib.figure import Figure
 
 from business.AnalyticsService import AnalyticsService
 from business.DuplicateService import DuplicateService, Posting, fetch_posting
-from business.ResumeAdvisor import recommend
+from business.ResumeAdvisor import get_api_key, recommend, save_api_key
 from persistence.DataAccessJob import DataAccessJob
 from visualization.DateRangeDialog import DateRangeDialog
 
@@ -22,6 +21,7 @@ MODEL_OPTIONS = {
     "GPT-5.6 Luna (Lower cost)": "gpt-5.6-luna",
     "Local assessment": "local",
 }
+DEFAULT_START_DATE = "2026-02-10"
 
 
 def format_assessment(result):
@@ -31,7 +31,7 @@ def format_assessment(result):
     return (
         f"Recommended: {result['file']}\n"
         f"Match: {stars}  {result['score']:.1f}/10  ·  Modify: {modification}\n"
-        f"Decision: {result['recommendation'].upper()}\n"
+        f"Priority: {result.get('priority', result['recommendation'])}\n"
         f"{result['summary']}\n"
         f"{source}"
     )
@@ -70,8 +70,8 @@ class Workbench:
 
     def _build_dates(self):
         today = datetime.now(ZoneInfo("America/Toronto")).date().isoformat()
-        first = self.dao.get_first_application_date()
-        self.start, self.end = tk.StringVar(value=first[:10] if first else today), tk.StringVar(value=today)
+        default_start = DEFAULT_START_DATE if DEFAULT_START_DATE <= today else today
+        self.start, self.end = tk.StringVar(value=default_start), tk.StringVar(value=today)
         box = ttk.LabelFrame(self.left, text="Date range", padding=10)
         box.grid(row=1, column=0, sticky="ew", pady=(16, 8))
         for row, (label, value) in enumerate((("From", self.start), ("To", self.end))):
@@ -99,6 +99,7 @@ class Workbench:
         self.model_selector = ttk.Combobox(model_row, textvariable=self.model_choice, values=list(MODEL_OPTIONS), state="readonly", width=28)
         self.model_selector.grid(row=0, column=1, padx=(8, 0), sticky="ew")
         self.model_selector.bind("<<ComboboxSelected>>", self.change_model)
+        ttk.Button(model_row, text="API Key…", command=self.configure_api_key).grid(row=0, column=2, padx=(6, 0))
         self.model_status = tk.StringVar()
         ttk.Label(model_row, textvariable=self.model_status, wraplength=330).grid(row=1, column=0, columnspan=2, sticky="w", pady=(3, 0))
         self.update_model_status()
@@ -113,10 +114,14 @@ class Workbench:
         ttk.Label(box, textvariable=self.job_title, font=("Segoe UI", 10, "bold"), wraplength=330).grid(row=2, column=0, columnspan=2, sticky="w", pady=(10, 2))
         self.lookup_status = tk.StringVar()
         ttk.Label(box, textvariable=self.lookup_status, wraplength=330).grid(row=3, column=0, columnspan=2, sticky="w")
-        self.resume_result = tk.StringVar()
-        ttk.Label(box, textvariable=self.resume_result, wraplength=355).grid(
-            row=4, column=0, columnspan=2, sticky="w", pady=(8, 0)
-        )
+        analysis = ttk.Frame(box)
+        analysis.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(8, 0))
+        analysis.columnconfigure(0, weight=1)
+        self.analysis_text = tk.Text(analysis, height=7, wrap="word", state="disabled", borderwidth=0, highlightthickness=0)
+        self.analysis_text.grid(row=0, column=0, sticky="ew")
+        analysis_scroll = ttk.Scrollbar(analysis, orient="vertical", command=self.analysis_text.yview)
+        analysis_scroll.grid(row=0, column=1, sticky="ns")
+        self.analysis_text.configure(yscrollcommand=analysis_scroll.set)
         resumes = ttk.LabelFrame(self.left, text="Resumes", padding=10)
         resumes.grid(row=3, column=0, sticky="ew", pady=8)
         resumes.columnconfigure(0, weight=1)
@@ -159,7 +164,7 @@ class Workbench:
             self.model_status.set(f"Current: {result['model']}")
         elif model == "local":
             self.model_status.set("Current: Local assessment")
-        elif not os.getenv("OPENAI_API_KEY"):
+        elif not get_api_key():
             self.model_status.set("Current: Local assessment — API key not configured")
         elif result:
             self.model_status.set("Current: Local assessment — AI request unavailable")
@@ -171,6 +176,30 @@ class Workbench:
         self.update_model_status()
         if self.posting and self.posting.description and self.resume_paths:
             self.start_resume_match()
+
+    def configure_api_key(self):
+        key = simpledialog.askstring(
+            "OpenAI API key",
+            "Enter an API key. Leave blank to remove the saved key.",
+            show="*",
+            parent=self.root,
+        )
+        if key is None:
+            return
+        try:
+            save_api_key(key.strip())
+        except Exception as error:
+            messagebox.showerror("API key", f"Could not update Windows Credential Manager: {error}", parent=self.root)
+            return
+        self.update_model_status()
+        if self.posting and self.posting.description and self.resume_paths:
+            self.start_resume_match()
+
+    def set_analysis(self, text):
+        self.analysis_text.configure(state="normal")
+        self.analysis_text.delete("1.0", "end")
+        self.analysis_text.insert("1.0", text)
+        self.analysis_text.configure(state="disabled")
 
     def set_history_visible(self, visible):
         if visible:
@@ -251,7 +280,7 @@ class Workbench:
     def replace_resume(self):
         resume_id = self.selected_resume_id()
         if resume_id is None:
-            self.resume_result.set("Select a resume to replace")
+            self.set_analysis("Select a resume to replace")
             return
         path = filedialog.askopenfilename(parent=self.root, title="Replace resume", filetypes=self._resume_filetypes())
         if path:
@@ -261,7 +290,7 @@ class Workbench:
     def rename_resume(self):
         resume_id = self.selected_resume_id()
         if resume_id is None:
-            self.resume_result.set("Select a resume to rename")
+            self.set_analysis("Select a resume to rename")
             return
         current = self.resume_table.item(str(resume_id), "values")[1]
         name = simpledialog.askstring("Rename resume", "Name", initialvalue=current, parent=self.root)
@@ -280,7 +309,7 @@ class Workbench:
     def remove_resume(self):
         resume_id = self.selected_resume_id()
         if resume_id is None:
-            self.resume_result.set("Select a resume to remove")
+            self.set_analysis("Select a resume to remove")
             return
         self.db.delete_resume(resume_id)
         self.refresh_resumes()
@@ -292,7 +321,7 @@ class Workbench:
         self.analyzing = True
         self.job_title.set("Analyzing job…")
         self.lookup_status.set("")
-        self.resume_result.set("")
+        self.set_analysis("")
         self.results.delete(*self.results.get_children())
         self.set_history_visible(False)
         threading.Thread(target=self._fetch_worker, args=(url,), daemon=True).start()
@@ -304,7 +333,7 @@ class Workbench:
         self.matches = []
         self.job_title.set("Paste a job URL from any public platform")
         self.lookup_status.set("")
-        self.resume_result.set("")
+        self.set_analysis("")
         self.results.delete(*self.results.get_children())
         self.set_history_visible(False)
 
@@ -332,12 +361,12 @@ class Workbench:
         if posting.description and self.resume_paths:
             self.start_resume_match()
         elif posting.description:
-            self.resume_result.set("Choose resumes to get a recommendation")
+            self.set_analysis("Choose resumes to get a recommendation")
         else:
-            self.resume_result.set("Resume match unavailable without a job description")
+            self.set_analysis("Resume match unavailable without a job description")
 
     def start_resume_match(self):
-        self.resume_result.set("Comparing resumes…")
+        self.set_analysis("Comparing resumes…")
         job_context = f"{self.posting.position}\n{self.posting.description}"
         model = self.selected_model()
         threading.Thread(target=self._resume_worker, args=(job_context, tuple(self.resume_paths), model), daemon=True).start()
@@ -377,9 +406,9 @@ class Workbench:
                     result, errors = value
                     if result:
                         self.update_model_status(result)
-                        self.resume_result.set(format_assessment(result))
+                        self.set_analysis(format_assessment(result))
                     else:
-                        self.resume_result.set(errors[0] if errors else "No readable resumes found")
+                        self.set_analysis(errors[0] if errors else "No readable resumes found")
                 else:
                     self.sync_button.configure(state="normal")
                     last_sync = self.db.get_last_sync_at()

@@ -37,6 +37,7 @@ python-dateutil==2.9.0.post0
 requests==2.34.2
 pypdf>=6.0,<7
 selenium>=4.35,<5
+keyring>=25,<26
 requests-oauthlib==2.0.0
 simplejson==4.1.1
 six==1.17.0

@@ -6,6 +6,9 @@ from pathlib import Path
 
 import requests
 
+KEYRING_SERVICE = "JobTrack OpenAI"
+KEYRING_USER = "api-key"
+
 SKILLS = {"python", "java", "javascript", "typescript", "react", "angular", "vue", "sql", "aws", "azure", "gcp", "docker", "kubernetes", "terraform", "spark", "pandas", "machine learning", "data analysis", "power bi", "tableau", "excel", "salesforce", "node", "c++", "c#", ".net", "rest", "graphql", "git", "linux", "agile", "scrum", "leadership", "ci/cd", "devops", "domain-driven design", "design patterns"}
 
 SPECIALIZATIONS = {
@@ -32,6 +35,28 @@ def read_resume(path):
             raise ValueError("PDF support requires: pip install pypdf") from error
         return "\n".join(page.extract_text() or "" for page in PdfReader(path).pages)
     raise ValueError("Supported formats: PDF, DOCX, TXT, MD")
+
+
+def get_api_key():
+    environment_key = os.getenv("OPENAI_API_KEY")
+    if environment_key:
+        return environment_key
+    try:
+        import keyring
+        return keyring.get_password(KEYRING_SERVICE, KEYRING_USER)
+    except Exception:
+        return None
+
+
+def save_api_key(api_key):
+    import keyring
+    if api_key:
+        keyring.set_password(KEYRING_SERVICE, KEYRING_USER, api_key)
+    else:
+        try:
+            keyring.delete_password(KEYRING_SERVICE, KEYRING_USER)
+        except keyring.errors.PasswordDeleteError:
+            pass
 
 
 def local_recommendation(description, resumes):
@@ -74,6 +99,7 @@ def local_recommendation(description, resumes):
     if len(missing_required) >= 2:
         score = min(score, 5.4)
     recommendation = "Apply" if score >= 7 else "Consider" if score >= 5 else "Skip"
+    priority = "Tier 1 — Apply" if recommendation == "Apply" else "Tier 2 — Consider" if recommendation == "Consider" else "Tier 3 — Skip"
     if lacks_experience:
         summary = f"Requires {minimum_years}+ years excluding internships; the resume does not show that experience."
     elif missing_required:
@@ -87,6 +113,7 @@ def local_recommendation(description, resumes):
         "score": score,
         "modification_needed": recommendation != "Skip" and score < 8,
         "recommendation": recommendation,
+        "priority": priority,
         "summary": summary,
         "source": "Local match",
     }
@@ -94,7 +121,7 @@ def local_recommendation(description, resumes):
 
 def ai_recommendation(description, resumes, model=None):
     fallback = local_recommendation(description, resumes)
-    api_key = os.getenv("OPENAI_API_KEY")
+    api_key = get_api_key()
     model = model or os.getenv("JOBTRACK_OPENAI_MODEL", "gpt-5.6-terra")
     if not api_key or model == "local":
         return fallback
@@ -106,16 +133,17 @@ def ai_recommendation(description, resumes, model=None):
             "score": {"type": "number", "minimum": 0, "maximum": 10},
             "modification_needed": {"type": "boolean"},
             "recommendation": {"type": "string", "enum": ["Apply", "Consider", "Skip"]},
+            "priority": {"type": "string", "enum": ["Tier 1+ — Definitely Apply", "Tier 1 — Apply", "Tier 2 — Consider", "Tier 3 — Skip"]},
             "summary": {"type": "string"},
         },
-        "required": ["file", "score", "modification_needed", "recommendation", "summary"],
+        "required": ["file", "score", "modification_needed", "recommendation", "priority", "summary"],
         "additionalProperties": False,
     }
     payload = {
         "model": model,
         "store": False,
         "input": [
-            {"role": "developer", "content": "Choose the strongest resume and assess whether the candidate should apply. Score job fit from 0 to 10 using only supplied evidence. Recommend Apply, Consider, or Skip. Set modification_needed only when tailoring could materially improve a viable application. Keep summary under 25 words."},
+            {"role": "developer", "content": "Choose the strongest resume and assess whether the candidate should apply. Score job fit from 0 to 10 using all supplied evidence, separating required qualifications from preferred assets. Do not penalize missing years unless the job states a minimum. Recommend Apply, Consider, or Skip and assign a matching priority tier. Set modification_needed only when tailoring could materially improve a viable application. Summarize the strongest matches and material gaps in at most 60 words."},
             {"role": "user", "content": f"JOB DESCRIPTION:\n{description[:18000]}\n\n{resume_text}"},
         ],
         "text": {"format": {"type": "json_schema", "name": "resume_choice", "strict": True, "schema": schema}},
