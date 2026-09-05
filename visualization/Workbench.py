@@ -33,18 +33,24 @@ class Workbench:
         self.duplicates, self.synchronize = DuplicateService(db.conn), synchronize
         self.events, self.resume_paths, self.matches, self.history_rows, self.posting = queue.Queue(), [], [], [], None
         self.analyzing = False
+        self._chart_resize_job = None
         self.root = tk.Tk()
         self.root.title("JobTrack")
-        self.root.geometry("1180x900")
-        self.root.minsize(960, 700)
-        self.root.columnconfigure(0, minsize=390)
-        self.root.columnconfigure(1, weight=1)
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        initial_width = min(1400, max(900, int(screen_width * .82)))
+        initial_height = min(950, max(680, int(screen_height * .82)))
+        self.root.geometry(f"{initial_width}x{initial_height}")
+        self.root.minsize(900, 680)
+        self.root.columnconfigure(0, weight=2, minsize=350)
+        self.root.columnconfigure(1, weight=3, minsize=430)
         self.root.rowconfigure(0, weight=1)
         self.root.rowconfigure(1, weight=0)
         self.left = ttk.Frame(self.root, padding=18)
         self.left.grid(row=0, column=0, sticky="nsew")
         self.left.columnconfigure(0, weight=1)
         self.left.rowconfigure(2, weight=1)
+        self.left.bind("<Configure>", self._resize_left_content)
         self.right = ttk.Frame(self.root, padding=(5, 18, 18, 18))
         self.right.grid(row=0, column=1, sticky="nsew")
         self.right.columnconfigure(0, weight=1)
@@ -64,6 +70,7 @@ class Workbench:
         self.start, self.end = tk.StringVar(value=default_start), tk.StringVar(value=today)
         box = ttk.LabelFrame(self.left, text="Date range", padding=10)
         box.grid(row=1, column=0, sticky="ew", pady=(16, 8))
+        box.columnconfigure(1, weight=1)
         for row, (label, value) in enumerate((("From", self.start), ("To", self.end))):
             ttk.Label(box, text=label, width=6).grid(row=row, column=0, sticky="w", pady=3)
             entry = ttk.Entry(box, textvariable=value, width=16)
@@ -73,8 +80,10 @@ class Workbench:
         quick = ttk.Frame(box)
         quick.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(7, 0))
         for column, (label, days) in enumerate((("7D", 7), ("30D", 30), ("90D", 90), ("All", None))):
-            ttk.Button(quick, text=label, command=lambda d=days: self.quick_range(d)).grid(row=0, column=column, padx=(0, 4))
-        ttk.Button(quick, text="Update", command=self.refresh_chart).grid(row=0, column=4)
+            quick.columnconfigure(column, weight=1)
+            ttk.Button(quick, text=label, command=lambda d=days: self.quick_range(d)).grid(row=0, column=column, padx=(0, 4), sticky="ew")
+        quick.columnconfigure(4, weight=1)
+        ttk.Button(quick, text="Update", command=self.refresh_chart).grid(row=0, column=4, sticky="ew")
 
     def _build_lookup(self):
         box = ttk.LabelFrame(self.left, text="Job check", padding=10)
@@ -85,7 +94,8 @@ class Workbench:
         model_row.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 7))
         model_row.columnconfigure(0, weight=1)
         self.model_status = tk.StringVar()
-        ttk.Label(model_row, textvariable=self.model_status, wraplength=255).grid(row=0, column=0, sticky="w")
+        self.model_status_label = ttk.Label(model_row, textvariable=self.model_status, wraplength=255)
+        self.model_status_label.grid(row=0, column=0, sticky="w")
         self.update_model_status()
         self.url = tk.StringVar()
         entry = ttk.Entry(box, textvariable=self.url)
@@ -95,9 +105,11 @@ class Workbench:
         self.clear_button = ttk.Button(box, text="Clear", command=self.clear_job)
         self.clear_button.grid(row=1, column=1, padx=(6, 0))
         self.job_title = tk.StringVar(value="Paste a job URL from any public platform")
-        ttk.Label(box, textvariable=self.job_title, font=("Segoe UI", 10, "bold"), wraplength=330).grid(row=2, column=0, columnspan=2, sticky="w", pady=(10, 2))
+        self.job_title_label = ttk.Label(box, textvariable=self.job_title, font=("Segoe UI", 10, "bold"), wraplength=330)
+        self.job_title_label.grid(row=2, column=0, columnspan=2, sticky="w", pady=(10, 2))
         self.lookup_status = tk.StringVar()
-        ttk.Label(box, textvariable=self.lookup_status, wraplength=330).grid(row=3, column=0, columnspan=2, sticky="w")
+        self.lookup_status_label = ttk.Label(box, textvariable=self.lookup_status, wraplength=330)
+        self.lookup_status_label.grid(row=3, column=0, columnspan=2, sticky="w")
         analysis = ttk.Frame(box)
         analysis.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(8, 0))
         analysis.columnconfigure(0, weight=1)
@@ -118,6 +130,9 @@ class Workbench:
             self.results.heading(key, text=label)
             self.results.column(key, width=width, minwidth=55)
         self.results.grid(row=0, column=0, sticky="nsew")
+        self.results.bind("<Configure>", lambda event: self._resize_table(
+            event.widget, (("date", .20), ("channel", .25), ("company", .24), ("position", .31))
+        ))
         history_scroll = ttk.Scrollbar(history, orient="vertical", command=self.results.yview)
         history_scroll.grid(row=0, column=1, sticky="ns")
         self.results.configure(yscrollcommand=history_scroll.set)
@@ -136,6 +151,11 @@ class Workbench:
             self.resume_table.column(key, width=width, minwidth=35)
         self.resume_table.grid(row=0, column=0, columnspan=4, sticky="ew")
         self.resume_table.bind("<Double-1>", lambda _event: self.toggle_resume())
+        self.resume_table.bind("<Configure>", lambda event: self._resize_table(
+            event.widget, (("use", .12), ("name", .61), ("updated", .27))
+        ))
+        for column in range(4):
+            resumes.columnconfigure(column, weight=1)
         ttk.Button(resumes, text="Add", command=self.add_resumes).grid(row=1, column=0, sticky="w", pady=(6, 0))
         ttk.Button(resumes, text="Replace", command=self.replace_resume).grid(row=1, column=1, pady=(6, 0))
         ttk.Button(resumes, text="Rename", command=self.rename_resume).grid(row=1, column=2, pady=(6, 0))
@@ -147,6 +167,32 @@ class Workbench:
         self.axes = self.figure.add_subplot(111)
         self.canvas = FigureCanvasTkAgg(self.figure, master=self.right)
         self.canvas.get_tk_widget().grid(row=1, column=0, sticky="nsew")
+        self.canvas.get_tk_widget().bind("<Configure>", self._schedule_chart_layout)
+
+    @staticmethod
+    def _resize_table(table, columns):
+        available = max(1, table.winfo_width() - 24)
+        for name, ratio in columns:
+            table.column(name, width=max(45, int(available * ratio)), stretch=True)
+
+    def _resize_left_content(self, event):
+        wrap = max(230, event.width - 55)
+        for label in (self.model_status_label, self.job_title_label, self.lookup_status_label):
+            label.configure(wraplength=wrap)
+        self.details_label.configure(wraplength=wrap - 15)
+        self._resize_table(self.results, (
+            ("date", .20), ("channel", .25), ("company", .24), ("position", .31)
+        ))
+
+    def _schedule_chart_layout(self, _event=None):
+        if self._chart_resize_job is not None:
+            self.root.after_cancel(self._chart_resize_job)
+        self._chart_resize_job = self.root.after(120, self._finish_chart_layout)
+
+    def _finish_chart_layout(self):
+        self._chart_resize_job = None
+        self.figure.tight_layout()
+        self.canvas.draw_idle()
 
     def update_model_status(self, result=None):
         self.model_status.set("Basic version · Local assessment")
