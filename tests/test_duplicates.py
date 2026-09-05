@@ -1,0 +1,70 @@
+import json
+import sqlite3
+import unittest
+from types import SimpleNamespace
+
+from business.DuplicateService import DuplicateService, Posting, canonical_url, parse_posting
+from persistence.DataAccess import DataAccess
+from persistence.DataAccessJob import DataAccessJob
+from business.AnalyticsService import AnalyticsService
+
+
+class DuplicateTests(unittest.TestCase):
+    def setUp(self):
+        self.db = DataAccess.__new__(DataAccess)
+        self.db.conn = sqlite3.connect(':memory:')
+        self.db.cursor = self.db.conn.cursor()
+        self.db.create_tables()
+        self.job = SimpleNamespace(gmail_id='one', application_key='acme-engineer', company='Acme',
+            position='Software Engineer', sender='hr@acme.com', created_date='2020-02-03 10:00:00 EST',
+            last_updated_date='2020-02-03 10:00:00 EST', status='Applied', assessment_count=0,
+            interview_count=0, offer=0, subject='Application received', body_preview='Thanks')
+        self.db.insert_job(self.job)
+        self.service = DuplicateService(self.db.conn)
+
+    def tearDown(self):
+        self.db.close()
+
+    def test_tracking_parameters_but_not_job_ids(self):
+        self.assertEqual(canonical_url('https://example.com/job?id=1&utm_source=email'), canonical_url('https://example.com/job?id=1'))
+        self.assertNotEqual(canonical_url('https://example.com/job?id=1'), canonical_url('https://example.com/job?id=2'))
+
+    def test_full_email_evidence_and_all_dates_outside_chart(self):
+        self.db.save_evidence(self.job, 'x' * 700 + ' https://example.com/jobs/1?utm_source=email')
+        self.job.gmail_id = 'two'
+        self.job.created_date = '2022-01-01 12:00:00 EST'
+        self.db.save_evidence(self.job, 'Applied again')
+        self.assertEqual(AnalyticsService(DataAccessJob(self.db.conn), '2026-01-01', '2026-12-31').get_total_applications(), 0)
+        result = self.service.search(Posting('https://example.com/jobs/1'))[0]
+        self.assertEqual(result['score'], 100)
+        self.assertIn('2020-02-03', result['dates'])
+        self.assertIn('2022-01-01', result['dates'])
+
+    def test_repost_description_and_different_company(self):
+        description = 'Build distributed systems with Python and SQL. ' * 5
+        self.service.save_snapshot(self.job.application_key, Posting('https://example.com/old', 'Acme', 'Software Engineer', description))
+        result = self.service.search(Posting('https://example.com/new', 'Acme', 'Software Engineer', description))[0]
+        self.assertEqual(result['score'], 95)
+        self.assertEqual(self.service.search(Posting('https://example.com/new', 'Other', 'Software Engineer', description)), [])
+
+    def test_title_only_is_not_definitive(self):
+        match = self.service.search(Posting('https://example.com/new', 'Acme', 'Software Engineer'))[0]
+        self.assertEqual(match['score'], 80)
+        self.assertIn('最早相关记录', match['dates'])
+        self.assertEqual(self.service.search(Posting('https://example.com/new', '', 'Software Engineer')), [])
+
+    def test_schema_migration_is_idempotent(self):
+        self.db.create_tables()
+        self.assertEqual(len(DataAccessJob(self.db.conn).get_all_jobs()), 1)
+
+    def test_structured_page_and_ambiguous_page(self):
+        node = {'@type': 'JobPosting', 'title': 'Engineer', 'hiringOrganization': {'name': 'Acme'}, 'description': '<p>Work &amp; build</p>'}
+        page = '<script type="application/ld+json">' + json.dumps({'@graph': [node]}) + '</script>'
+        result = parse_posting('https://example.com/job', page)
+        self.assertEqual(result.company, 'Acme')
+        self.assertIn('Work & build', result.description)
+        self.assertTrue(parse_posting('https://example.com/job', '<title>Sign in</title>').warning)
+
+
+if __name__ == '__main__':
+    unittest.main()

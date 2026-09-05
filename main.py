@@ -3,13 +3,10 @@ import os
 
 from objects.JobApplication import JobApplication
 from persistence.DataAccess import DataAccess
-from persistence.DataAccessJob import DataAccessJob
 from business.EmailClassifier import EmailClassifier
-from business.AnalyticsService import AnalyticsService
 from gmail.GmailService import get_header, extract_body, convert_to_toronto
 from parsers.EmailParser import EmailParser
-from visualization.DateRangeDialog import DateRangeDialog
-from visualization.FunnelChart import FunnelChart
+from visualization.Workbench import Workbench
 
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -51,153 +48,122 @@ def get_gmail_service():
 
     return build("gmail", "v1", credentials=creds)
 
-def main():
+def synchronize_gmail():
     db = DataAccess()
     db.create_tables()
 
-    service = get_gmail_service()
+    try:
+        sync_started = datetime.now(ZoneInfo("America/Toronto")).strftime("%Y/%m/%d")
+        service = get_gmail_service()
 
-    FULL_REBUILD = False
+        # One full history pass supplies evidence missing from legacy 500-character previews.
+        db.conn.execute("CREATE TABLE IF NOT EXISTS evidence_metadata (id INTEGER PRIMARY KEY, completed INTEGER)")
+        FULL_REBUILD = db.conn.execute("SELECT completed FROM evidence_metadata WHERE id = 1").fetchone() is None
 
-    if FULL_REBUILD:
-        query = "after:2026/02/10"
-    else:
-        last_sync_date = db.get_last_sync_date()
-
-        if last_sync_date:
-            query = f"after:{last_sync_date}"
+        if FULL_REBUILD:
+            query = ""
         else:
-            query = "after:2026/02/10"
+            last_sync_date = db.get_last_sync_date()
 
-    print("Gmail query:", query)
+            if last_sync_date:
+                query = f"after:{last_sync_date}"
+            else:
+                query = ""
 
-    all_messages = []
-    page_token = None
+        print("Gmail query:", query)
 
-    while True:
+        all_messages = []
+        page_token = None
 
-        results = service.users().messages().list(
-            userId="me",
-            q=query,
-            maxResults=100,
-            pageToken=page_token
-        ).execute()
+        while True:
 
-        all_messages.extend(
-            results.get("messages", [])
-        )
+            results = service.users().messages().list(
+                userId="me",
+                q=query,
+                maxResults=100,
+                pageToken=page_token
+            ).execute()
 
-        page_token = results.get("nextPageToken")
+            all_messages.extend(
+                results.get("messages", [])
+            )
 
-        if not page_token:
-            break
+            page_token = results.get("nextPageToken")
 
-    print(f"Found {len(all_messages)} emails")
+            if not page_token:
+                break
 
-    inserted_count = 0
-    total = len(all_messages)
+        print(f"Found {len(all_messages)} emails")
 
-    count = 0
-    for index, msg in enumerate(all_messages, start=1):
-        if index % 10 == 0:
-            print(f"Processed {index}/{total}")
-        #
-        # count += 1
-        # if count > 50:
-        #     break
-        message = service.users().messages().get(
-            userId="me",
-            id=msg["id"],
-            format="full",
-        ).execute()
+        inserted_count = 0
+        total = len(all_messages)
 
-        headers = message["payload"]["headers"]
+        for index, msg in enumerate(all_messages, start=1):
+            if index % 10 == 0:
+                print(f"Processed {index}/{total}")
+            message = service.users().messages().get(
+                userId="me",
+                id=msg["id"],
+                format="full",
+            ).execute()
 
-        subject = get_header(headers, "Subject")
-        sender = get_header(headers, "From")
-        if "pengyuwang777@gmail.com" in sender.lower():
-            continue
+            headers = message["payload"]["headers"]
 
-        raw_date = get_header(headers, "Date")
-        date = convert_to_toronto(raw_date)
+            subject = get_header(headers, "Subject")
+            sender = get_header(headers, "From")
+            if "pengyuwang777@gmail.com" in sender.lower():
+                continue
 
-        body = extract_body(message["payload"])
+            raw_date = get_header(headers, "Date")
+            date = convert_to_toronto(raw_date)
 
-        combined_text = subject + " " + body
-        if not EmailClassifier.is_job_related(combined_text):
-            continue
-        status = EmailClassifier.detect_status(subject, combined_text)
+            body = extract_body(message["payload"])
 
-        company = EmailParser.extract_company(sender, subject, body)
-        position = EmailParser.extract_position(subject, body)
-        application_key = EmailParser.generate_application_key(
-            company,
-            position
-        )
-        job = JobApplication(
-            msg["id"],
-            application_key,
-            company,
-            position,
-            sender,
-            date,
-            date,
-            status,
-            EmailClassifier.detect_assessment_count(combined_text),
-            EmailClassifier.detect_interview_count(combined_text),
-            EmailClassifier.detect_offer_flag(status),
-            subject,
-            body[:500]
-        )
+            combined_text = subject + " " + body
+            if not EmailClassifier.is_job_related(combined_text):
+                continue
+            status = EmailClassifier.detect_status(subject, combined_text)
 
-        db.insert_job(job)
-        inserted_count += 1
-    print(f"Inserted {inserted_count} job-related emails")
-    job_dao = DataAccessJob(db.conn)
+            company = EmailParser.extract_company(sender, subject, body)
+            position = EmailParser.extract_position(subject, body)
+            application_key = EmailParser.generate_application_key(
+                company,
+                position
+            )
+            job = JobApplication(
+                msg["id"],
+                application_key,
+                company,
+                position,
+                sender,
+                date,
+                date,
+                status,
+                EmailClassifier.detect_assessment_count(combined_text),
+                EmailClassifier.detect_interview_count(combined_text),
+                EmailClassifier.detect_offer_flag(status),
+                subject,
+                body[:500]
+            )
 
-    first_job_date = job_dao.get_first_application_date()
-
-    today_display = datetime.now(
-        ZoneInfo("America/Toronto")
-    ).strftime("%Y-%m-%d")
-
-    selected_range = DateRangeDialog.select(
-        default_start=first_job_date[:10] if first_job_date else today_display,
-        default_end=today_display
-    )
-
-    today = datetime.now(
-        ZoneInfo("America/Toronto")
-    ).strftime("%Y/%m/%d")
-    db.update_last_sync_date(today)
-    print("Last sync date updated:", today)
-
-    if selected_range is None:
-        print("Report cancelled.")
+            db.insert_job(job)
+            db.save_evidence(job, body)
+            inserted_count += 1
+        print(f"Inserted {inserted_count} job-related emails")
+        db.update_last_sync_date(sync_started)
+        db.conn.execute("INSERT OR REPLACE INTO evidence_metadata VALUES (1, 1)")
+        db.conn.commit()
+    finally:
         db.close()
-        return
 
-    start_date, end_date = selected_range
-    analytics = AnalyticsService(job_dao, start_date, end_date)
 
-    summary = analytics.get_summary()
-    print(summary)
-
-    analytics.print_funnel_report()
-
-    funnel = analytics.get_funnel_data()
-
-    FunnelChart.show_funnel(
-        applications=funnel["applications"],
-        assessments=funnel["assessments"],
-        interviews=funnel["interviews"],
-        rejected=funnel["rejected"],
-        offers=funnel["offers"],
-        start_date=start_date,
-        end_date=end_date
-    )
-
-    db.close()
+def main():
+    db = DataAccess()
+    db.create_tables()
+    try:
+        Workbench(db, synchronize_gmail).run()
+    finally:
+        db.close()
 
 
 if __name__ == "__main__":

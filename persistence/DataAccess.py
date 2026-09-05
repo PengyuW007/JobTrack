@@ -39,6 +39,29 @@ class DataAccess:
 
         self.conn.commit()
 
+        self.cursor.executescript("""
+        CREATE TABLE IF NOT EXISTS application_evidence (
+            gmail_id TEXT PRIMARY KEY,
+            application_key TEXT,
+            company TEXT, position TEXT, date TEXT, status TEXT,
+            subject TEXT, body TEXT
+        );
+        CREATE TABLE IF NOT EXISTS posting_snapshots (
+            application_key TEXT, url TEXT, company TEXT,
+            position TEXT, description TEXT,
+            PRIMARY KEY (application_key, url)
+        );
+        """)
+        self.conn.commit()
+
+    def save_evidence(self, job, body):
+        self.conn.execute("""
+            INSERT OR REPLACE INTO application_evidence
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (job.gmail_id, job.application_key, job.company, job.position,
+              job.created_date, job.status, job.subject, body))
+        self.conn.commit()
+
     def insert_job(self, job):
         self.cursor.execute("""
         INSERT INTO jobs(
