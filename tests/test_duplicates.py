@@ -70,6 +70,17 @@ class DuplicateTests(unittest.TestCase):
         self.db.create_tables()
         self.assertEqual(len(DataAccessJob(self.db.conn).get_all_jobs()), 1)
 
+    def test_reclassified_gmail_message_moves_to_new_application(self):
+        self.job.application_key = 'acme-quality-engineer'
+        self.job.position = 'Quality Engineer'
+
+        self.db.insert_job(self.job)
+        self.db.save_evidence(self.job, 'Quality engineering application')
+
+        jobs = DataAccessJob(self.db.conn).get_all_jobs()
+        self.assertEqual(len(jobs), 1)
+        self.assertEqual(jobs[0].application_key, 'acme-quality-engineer')
+
     def test_resume_management_and_sync_timestamp(self):
         self.db.add_resume('Full Stack—0905', 'C:/resumes/full-stack-0905.pdf')
         resume_id = self.db.get_resumes()[0][0]

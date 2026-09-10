@@ -81,9 +81,25 @@ class DataAccess:
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (job.gmail_id, job.application_key, job.company, job.position,
               job.created_date, job.status, job.subject, body))
+        self.conn.execute("""
+            DELETE FROM jobs
+            WHERE gmail_id IS NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM application_evidence
+                  WHERE application_evidence.application_key = jobs.application_key
+              )
+        """)
         self.conn.commit()
 
     def insert_job(self, job):
+        # A classifier update can assign an existing Gmail message to a new
+        # application key. Release its old one-to-one Gmail link before the
+        # application-key upsert merges the newly classified result.
+        self.cursor.execute("""
+            UPDATE jobs
+            SET gmail_id = NULL
+            WHERE gmail_id = ? AND application_key <> ?
+        """, (job.gmail_id, job.application_key))
         self.cursor.execute("""
         INSERT INTO jobs(
             gmail_id,
