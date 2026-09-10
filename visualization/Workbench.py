@@ -89,7 +89,7 @@ class Workbench:
         box = ttk.LabelFrame(self.left, text="Job check", padding=10)
         box.grid(row=2, column=0, sticky="nsew", pady=8)
         box.columnconfigure(0, weight=1)
-        box.rowconfigure(5, weight=1)
+        box.rowconfigure(5, weight=1, minsize=125)
         model_row = ttk.Frame(box)
         model_row.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 7))
         model_row.columnconfigure(0, weight=1)
