@@ -9,7 +9,7 @@ from gmail.GmailService import get_header, extract_body, convert_to_toronto
 from parsers.EmailParser import EmailParser
 from visualization.Workbench import Workbench
 
-from datetime import datetime
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 from google.auth.transport.requests import Request
@@ -50,12 +50,16 @@ def get_gmail_service():
 
     return build("gmail", "v1", credentials=creds)
 
-def synchronize_gmail():
+def synchronize_gmail(progress=None):
     db = DataAccess()
     db.create_tables()
 
     try:
-        sync_started = datetime.now(ZoneInfo("America/Toronto")).strftime("%Y/%m/%d")
+        sync_started_at = datetime.now(timezone.utc)
+        sync_started = sync_started_at.astimezone(
+            ZoneInfo("America/Toronto")
+        ).strftime("%Y/%m/%d")
+        sync_started_epoch = int(sync_started_at.timestamp())
         service = get_gmail_service()
         account_email = service.users().getProfile(userId="me").execute().get("emailAddress", "").casefold()
 
@@ -69,15 +73,18 @@ def synchronize_gmail():
 
         if FULL_REBUILD:
             query = ""
+            scanned_ids = db.get_scanned_gmail_ids(CLASSIFIER_VERSION)
         else:
+            scanned_ids = set()
+            last_sync_epoch = db.get_last_sync_epoch()
             last_sync_date = db.get_last_sync_date()
 
-            if last_sync_date:
+            if last_sync_epoch:
+                query = f"after:{last_sync_epoch}"
+            elif last_sync_date:
                 query = f"after:{last_sync_date}"
             else:
                 query = ""
-
-        print("Gmail query:", query)
 
         all_messages = []
         page_token = None
@@ -87,27 +94,29 @@ def synchronize_gmail():
             results = service.users().messages().list(
                 userId="me",
                 q=query,
-                maxResults=100,
+                maxResults=500,
                 pageToken=page_token
             ).execute()
 
             all_messages.extend(
                 results.get("messages", [])
             )
+            if progress:
+                progress(f"Finding email… {len(all_messages)} found")
 
             page_token = results.get("nextPageToken")
 
             if not page_token:
                 break
 
-        print(f"Found {len(all_messages)} emails")
-
         inserted_count = 0
         total = len(all_messages)
 
         for index, msg in enumerate(all_messages, start=1):
-            if index % 10 == 0:
-                print(f"Processed {index}/{total}")
+            if msg["id"] in scanned_ids:
+                if progress and (index % 25 == 0 or index == total):
+                    progress(f"Syncing email… {index}/{total}")
+                continue
             message = service.users().messages().get(
                 userId="me",
                 id=msg["id"],
@@ -119,6 +128,7 @@ def synchronize_gmail():
             subject = get_header(headers, "Subject")
             sender = get_header(headers, "From")
             if account_email and parseaddr(sender)[1].casefold() == account_email:
+                db.mark_gmail_scanned(msg["id"], CLASSIFIER_VERSION)
                 continue
 
             raw_date = get_header(headers, "Date")
@@ -128,6 +138,11 @@ def synchronize_gmail():
 
             combined_text = subject + " " + body
             if not EmailClassifier.is_job_related(combined_text):
+                db.mark_gmail_scanned(msg["id"], CLASSIFIER_VERSION)
+                if index % 25 == 0:
+                    db.conn.commit()
+                    if progress:
+                        progress(f"Syncing email… {index}/{total}")
                 continue
             status = EmailClassifier.detect_status(subject, combined_text)
 
@@ -155,13 +170,16 @@ def synchronize_gmail():
 
             db.insert_job(job)
             db.save_evidence(job, body)
+            db.mark_gmail_scanned(msg["id"], CLASSIFIER_VERSION)
             inserted_count += 1
-        print(f"Inserted {inserted_count} job-related emails")
-        db.update_last_sync_date(sync_started)
+            if progress and (index % 25 == 0 or index == total):
+                progress(f"Syncing email… {index}/{total}")
+        db.update_last_sync_date(sync_started, sync_started_epoch)
         db.conn.execute(
             "INSERT OR REPLACE INTO evidence_metadata(id, completed, classifier_version) VALUES (1, 1, ?)",
             (CLASSIFIER_VERSION,),
         )
+        db.clear_gmail_scan_progress()
         db.conn.commit()
     finally:
         db.close()

@@ -63,10 +63,16 @@ class DataAccess:
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS gmail_scan_progress (
+            gmail_id TEXT PRIMARY KEY,
+            classifier_version INTEGER NOT NULL
+        );
         """)
         columns = {row[1] for row in self.cursor.execute("PRAGMA table_info(sync_metadata)")}
         if "last_sync_at" not in columns:
             self.cursor.execute("ALTER TABLE sync_metadata ADD COLUMN last_sync_at TEXT")
+        if "last_sync_epoch" not in columns:
+            self.cursor.execute("ALTER TABLE sync_metadata ADD COLUMN last_sync_epoch INTEGER")
         self.conn.commit()
 
     def save_evidence(self, job, body):
@@ -163,20 +169,49 @@ END,
 
         return None
 
-    def update_last_sync_date(self, sync_date):
+    def get_last_sync_epoch(self):
+        row = self.conn.execute(
+            "SELECT last_sync_epoch FROM sync_metadata WHERE id = 1"
+        ).fetchone()
+        return row[0] if row and row[0] else None
+
+    def update_last_sync_date(self, sync_date, sync_epoch=None):
         self.cursor.execute("""
-        INSERT INTO sync_metadata(id, last_sync_date, last_sync_at)
-        VALUES(1, ?, ?)
+        INSERT INTO sync_metadata(id, last_sync_date, last_sync_at, last_sync_epoch)
+        VALUES(1, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
             last_sync_date = excluded.last_sync_date,
-            last_sync_at = excluded.last_sync_at
-        """, (sync_date, datetime.now().astimezone().strftime("%Y-%m-%d %H:%M")))
+            last_sync_at = excluded.last_sync_at,
+            last_sync_epoch = COALESCE(excluded.last_sync_epoch, sync_metadata.last_sync_epoch)
+        """, (
+            sync_date,
+            datetime.now().astimezone().strftime("%Y-%m-%d %H:%M"),
+            sync_epoch,
+        ))
 
         self.conn.commit()
 
     def get_last_sync_at(self):
         row = self.conn.execute("SELECT last_sync_at FROM sync_metadata WHERE id = 1").fetchone()
         return row[0] if row and row[0] else None
+
+    def get_scanned_gmail_ids(self, classifier_version):
+        return {
+            row[0]
+            for row in self.conn.execute(
+                "SELECT gmail_id FROM gmail_scan_progress WHERE classifier_version = ?",
+                (classifier_version,),
+            )
+        }
+
+    def mark_gmail_scanned(self, gmail_id, classifier_version):
+        self.conn.execute(
+            "INSERT OR REPLACE INTO gmail_scan_progress(gmail_id, classifier_version) VALUES (?, ?)",
+            (gmail_id, classifier_version),
+        )
+
+    def clear_gmail_scan_progress(self):
+        self.conn.execute("DELETE FROM gmail_scan_progress")
 
     def get_resumes(self):
         return self.conn.execute(

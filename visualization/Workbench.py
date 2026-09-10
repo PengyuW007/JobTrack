@@ -395,7 +395,9 @@ class Workbench:
         self.sync_status.set("Syncing…")
         def worker():
             try:
-                self.synchronize()
+                self.synchronize(
+                    lambda message: self.events.put(("sync_progress", message))
+                )
                 self.events.put(("sync", None))
             except Exception as error:
                 self.events.put(("sync", str(error)))
@@ -416,7 +418,9 @@ class Workbench:
                         self.set_analysis(format_assessment(result))
                     else:
                         self.set_analysis(errors[0] if errors else "No readable resumes found")
-                else:
+                elif kind == "sync_progress":
+                    self.sync_status.set(value)
+                elif kind == "sync":
                     self.sync_button.configure(state="normal")
                     last_sync = self.db.get_last_sync_at()
                     self.sync_status.set("Sync failed" if value else f"Last synced at {last_sync}")

@@ -196,8 +196,13 @@ __pycache__/
 
 # Database
 tracker.db
+*.db-journal
+*.db-shm
+*.db-wal
 *.sqlite
 *.sqlite3
+*.sqlite-journal
+*.sqlite3-journal
 
 # Personal resumes and private user data
 resumes/
