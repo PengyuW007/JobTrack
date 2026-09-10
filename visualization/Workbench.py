@@ -361,7 +361,11 @@ class Workbench:
         if not self.matches:
             self.show_empty_history()
         if self.matches:
-            self.lookup_status.set(f"Previously applied — {len(self.matches)} match(es)")
+            application_count = len(self.history_rows)
+            unit = "time" if application_count == 1 else "times"
+            self.lookup_status.set(
+                f"Previously applied — {application_count} {unit}"
+            )
         elif posting.position:
             self.lookup_status.set("No previous application found")
         else:
