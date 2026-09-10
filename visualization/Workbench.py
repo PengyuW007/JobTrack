@@ -395,12 +395,12 @@ class Workbench:
         self.sync_status.set("Syncing…")
         def worker():
             try:
-                self.synchronize(
+                unreadable_count = self.synchronize(
                     lambda message: self.events.put(("sync_progress", message))
                 )
-                self.events.put(("sync", None))
+                self.events.put(("sync", (None, unreadable_count or 0)))
             except Exception as error:
-                self.events.put(("sync", str(error)))
+                self.events.put(("sync", (type(error).__name__, 0)))
         threading.Thread(target=worker, daemon=True).start()
 
     def poll(self):
@@ -423,7 +423,12 @@ class Workbench:
                 elif kind == "sync":
                     self.sync_button.configure(state="normal")
                     last_sync = self.db.get_last_sync_at()
-                    self.sync_status.set("Sync failed" if value else f"Last synced at {last_sync}")
+                    error_name, unreadable_count = value
+                    if error_name:
+                        self.sync_status.set(f"Sync failed · {error_name}")
+                    else:
+                        suffix = f" · {unreadable_count} unreadable skipped" if unreadable_count else ""
+                        self.sync_status.set(f"Last synced at {last_sync}{suffix}")
                     self.refresh_chart()
         except queue.Empty:
             pass

@@ -61,7 +61,9 @@ def synchronize_gmail(progress=None):
         ).strftime("%Y/%m/%d")
         sync_started_epoch = int(sync_started_at.timestamp())
         service = get_gmail_service()
-        account_email = service.users().getProfile(userId="me").execute().get("emailAddress", "").casefold()
+        account_email = service.users().getProfile(
+            userId="me"
+        ).execute(num_retries=3).get("emailAddress", "").casefold()
 
         # One full history pass supplies evidence missing from legacy 500-character previews.
         db.conn.execute("CREATE TABLE IF NOT EXISTS evidence_metadata (id INTEGER PRIMARY KEY, completed INTEGER, classifier_version INTEGER DEFAULT 1)")
@@ -96,7 +98,7 @@ def synchronize_gmail(progress=None):
                 q=query,
                 maxResults=500,
                 pageToken=page_token
-            ).execute()
+            ).execute(num_retries=3)
 
             all_messages.extend(
                 results.get("messages", [])
@@ -110,7 +112,15 @@ def synchronize_gmail(progress=None):
                 break
 
         inserted_count = 0
+        unreadable_count = 0
         total = len(all_messages)
+
+        def checkpoint(message_id, current_index):
+            db.mark_gmail_scanned(message_id, CLASSIFIER_VERSION)
+            if current_index % 25 == 0 or current_index == total:
+                db.conn.commit()
+                if progress:
+                    progress(f"Syncing email… {current_index}/{total}")
 
         for index, msg in enumerate(all_messages, start=1):
             if msg["id"] in scanned_ids:
@@ -121,28 +131,30 @@ def synchronize_gmail(progress=None):
                 userId="me",
                 id=msg["id"],
                 format="full",
-            ).execute()
+            ).execute(num_retries=3)
 
-            headers = message["payload"]["headers"]
-
-            subject = get_header(headers, "Subject")
-            sender = get_header(headers, "From")
-            if account_email and parseaddr(sender)[1].casefold() == account_email:
-                db.mark_gmail_scanned(msg["id"], CLASSIFIER_VERSION)
+            try:
+                payload = message.get("payload") or {}
+                headers = payload.get("headers") or []
+                subject = get_header(headers, "Subject")
+                sender = get_header(headers, "From")
+                raw_date = get_header(headers, "Date")
+                if not raw_date:
+                    raise ValueError("Message has no Date header")
+                date = convert_to_toronto(raw_date)
+                body = extract_body(payload)
+            except (AttributeError, KeyError, TypeError, ValueError):
+                unreadable_count += 1
+                checkpoint(msg["id"], index)
                 continue
 
-            raw_date = get_header(headers, "Date")
-            date = convert_to_toronto(raw_date)
-
-            body = extract_body(message["payload"])
+            if account_email and parseaddr(sender)[1].casefold() == account_email:
+                checkpoint(msg["id"], index)
+                continue
 
             combined_text = subject + " " + body
             if not EmailClassifier.is_job_related(combined_text):
-                db.mark_gmail_scanned(msg["id"], CLASSIFIER_VERSION)
-                if index % 25 == 0:
-                    db.conn.commit()
-                    if progress:
-                        progress(f"Syncing email… {index}/{total}")
+                checkpoint(msg["id"], index)
                 continue
             status = EmailClassifier.detect_status(subject, combined_text)
 
@@ -170,10 +182,8 @@ def synchronize_gmail(progress=None):
 
             db.insert_job(job)
             db.save_evidence(job, body)
-            db.mark_gmail_scanned(msg["id"], CLASSIFIER_VERSION)
+            checkpoint(msg["id"], index)
             inserted_count += 1
-            if progress and (index % 25 == 0 or index == total):
-                progress(f"Syncing email… {index}/{total}")
         db.update_last_sync_date(sync_started, sync_started_epoch)
         db.conn.execute(
             "INSERT OR REPLACE INTO evidence_metadata(id, completed, classifier_version) VALUES (1, 1, ?)",
@@ -181,6 +191,7 @@ def synchronize_gmail(progress=None):
         )
         db.clear_gmail_scan_progress()
         db.conn.commit()
+        return unreadable_count
     finally:
         db.close()
 
