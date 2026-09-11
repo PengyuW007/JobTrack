@@ -19,7 +19,7 @@ JobTrack.pyw
 User selects Sync Gmail
     -> main.synchronize_gmail()
         -> Google OAuth + Gmail API (read-only)
-        -> gmail/gmailService.py decodes messages and dates
+        -> gmail/gmail_service.py decodes messages and dates
         -> EmailClassifier + EmailParser
         -> DataAccess writes jobs, evidence, and sync metadata
         -> Workbench refreshes the funnel
@@ -44,7 +44,7 @@ User pastes a public job URL
 | `JobTrack.pyw` | GUI launcher. Changes the working directory to the repository root and calls `main.main()`. |
 | `main.py` | Composition root, Google OAuth, Gmail synchronization, classification, parsing, and persistence orchestration. |
 | `business/` | Domain services: funnel analytics, email classification, job-page retrieval/duplicate matching, and local resume recommendation. |
-| `gmail/gmailService.py` | Gmail header lookup, message-body extraction, and Toronto timezone conversion. |
+| `gmail/gmail_service.py` | Gmail header lookup, message-body extraction, and Toronto timezone conversion. |
 | `objects/JobApplication.py` | Application record object shared by parsing and persistence. |
 | `parsers/EmailParser.py` | Extracts company and position and generates an application key from email content. |
 | `persistence/DataAccess.py` | SQLite connection, schema creation/migration, synchronization metadata, evidence, snapshots, settings, and resume records. |

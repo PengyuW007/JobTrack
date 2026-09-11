@@ -65,6 +65,7 @@ class PageParser(HTMLParser):
         self.buffer = []
         self.in_title = False
         self.title = ''
+        self.iframes = []
 
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
@@ -73,6 +74,8 @@ class PageParser(HTMLParser):
             self.buffer = []
         if tag == 'title':
             self.in_title = True
+        if tag == 'iframe' and attrs.get('src'):
+            self.iframes.append(attrs['src'])
 
     def handle_data(self, data):
         if self.capture:
@@ -139,7 +142,21 @@ def _fetch_direct(url):
                 chunks.extend(chunk)
                 if len(chunks) > 3_000_000:
                     raise ValueError('The job page is too large to parse.')
-            return parse_posting(url, chunks.decode(response.encoding or 'utf-8', errors='replace'))
+            source = chunks.decode(response.encoding or 'utf-8', errors='replace')
+            posting = parse_posting(url, source)
+            if posting.position:
+                return posting
+            parser = PageParser()
+            parser.feed(source)
+            same_site_iframes = [
+                urljoin(current, source_url)
+                for source_url in parser.iframes
+                if urlsplit(urljoin(current, source_url)).hostname == parts.hostname
+            ]
+            if same_site_iframes:
+                current = same_site_iframes[0]
+                continue
+            return posting
     raise ValueError('The job URL redirects too many times.')
 
 
@@ -232,10 +249,9 @@ def _fetch_with_browser(url):
 
 def fetch_posting(url):
     canonical_url(url)
-    host = (urlsplit(url).hostname or '').lower()
     try:
         posting = _fetch_direct(url)
-        if posting.position or not host.endswith(('indeed.com', 'linkedin.com')):
+        if posting.position:
             return posting
     except requests.RequestException:
         posting = None

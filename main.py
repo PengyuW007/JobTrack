@@ -5,7 +5,7 @@ from email.utils import parseaddr
 from objects.JobApplication import JobApplication
 from persistence.DataAccess import DataAccess
 from business.EmailClassifier import EmailClassifier
-from gmail.gmailService import get_header, extract_body, convert_to_toronto
+from gmail.gmail_service import get_header, extract_body, convert_to_toronto
 from parsers.EmailParser import EmailParser
 from visualization.Workbench import Workbench
 

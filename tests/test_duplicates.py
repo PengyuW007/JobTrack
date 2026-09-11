@@ -2,9 +2,9 @@ import json
 import sqlite3
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
-from business.DuplicateService import DuplicateService, Posting, canonical_url, fetch_posting, parse_posting
+from business.DuplicateService import DuplicateService, Posting, _fetch_direct, canonical_url, fetch_posting, parse_posting
 from persistence.DataAccess import DataAccess
 from persistence.DataAccessJob import DataAccessJob
 from business.AnalyticsService import AnalyticsService
@@ -119,6 +119,36 @@ class DuplicateTests(unittest.TestCase):
         with patch('business.DuplicateService._fetch_direct', return_value=Posting(url, warning='blocked')), \
                 patch('business.DuplicateService._fetch_with_browser', return_value=browser_result):
             self.assertEqual(fetch_posting(url).position, 'Engineer')
+
+    def test_company_site_uses_browser_fallback(self):
+        url = 'https://careers.example.com/jobs/123'
+        browser_result = Posting(url, 'Acme', 'Engineer', 'Build software')
+        with patch('business.DuplicateService._fetch_direct', return_value=Posting(url, warning='blocked')), \
+                patch('business.DuplicateService._fetch_with_browser', return_value=browser_result):
+            self.assertEqual(fetch_posting(url).position, 'Engineer')
+
+    def test_same_site_job_iframe_is_parsed(self):
+        url = 'https://careers.example.com/jobs/123/job'
+        outer = b'<iframe src="?in_iframe=1"></iframe>'
+        node = {'@type': 'JobPosting', 'title': 'Engineer',
+                'hiringOrganization': {'name': 'Acme'}, 'description': 'Build software'}
+        inner = ('<script type="application/ld+json">' + json.dumps(node) + '</script>').encode()
+
+        def response(body):
+            result = MagicMock()
+            result.__enter__.return_value = result
+            result.is_redirect = False
+            result.encoding = 'utf-8'
+            result.iter_content.return_value = [body]
+            return result
+
+        public_address = [(None, None, None, None, ('8.8.8.8', 443))]
+        with patch('business.DuplicateService.socket.getaddrinfo', return_value=public_address), \
+                patch('business.DuplicateService.requests.get', side_effect=(response(outer), response(inner))):
+            posting = _fetch_direct(url)
+
+        self.assertEqual(posting.company, 'Acme')
+        self.assertEqual(posting.position, 'Engineer')
 
     def test_thank_you_for_your_application_is_imported(self):
         subject = 'Thank you for your application to PolicyMe'
