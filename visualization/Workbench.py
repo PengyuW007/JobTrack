@@ -42,6 +42,7 @@ class Workbench:
         self.analyzing = False
         self._chart_resize_job = None
         self._daily_sync_job = None
+        self._compact_layout = None
         self.root = tk.Tk()
         self.root.title("JobTrack")
         screen_width = self.root.winfo_screenwidth()
@@ -79,6 +80,7 @@ class Workbench:
         self.start, self.end = tk.StringVar(value=default_start), tk.StringVar(value=today)
         box = ttk.LabelFrame(self.left, text="Date range", padding=10)
         box.grid(row=1, column=0, sticky="ew", pady=(16, 8))
+        self.date_box = box
         box.columnconfigure(1, weight=1)
         for row, (label, value) in enumerate((("From", self.start), ("To", self.end))):
             ttk.Label(box, text=label, width=6).grid(row=row, column=0, sticky="w", pady=3)
@@ -99,6 +101,7 @@ class Workbench:
         box.grid(row=2, column=0, sticky="nsew", pady=8)
         box.columnconfigure(0, weight=1)
         box.rowconfigure(5, weight=1, minsize=145)
+        self.job_check = box
         model_row = ttk.Frame(box)
         model_row.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 7))
         model_row.columnconfigure(0, weight=1)
@@ -122,6 +125,7 @@ class Workbench:
         analysis = ttk.Frame(box)
         analysis.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(8, 0))
         analysis.columnconfigure(0, weight=1)
+        self.analysis_frame = analysis
         self.analysis_text = tk.Text(analysis, height=7, wrap="word", state="disabled", borderwidth=0, highlightthickness=0)
         self.analysis_text.grid(row=0, column=0, sticky="ew")
         analysis_scroll = ttk.Scrollbar(analysis, orient="vertical", command=self.analysis_text.yview)
@@ -129,19 +133,21 @@ class Workbench:
         self.analysis_text.configure(yscrollcommand=analysis_scroll.set)
 
         history = ttk.LabelFrame(box, text="Application history", padding=(6, 5))
-        history.grid(row=5, column=0, columnspan=2, sticky="nsew", pady=(10, 0))
+        history.grid(row=5, column=0, columnspan=2, sticky="nsew", pady=(10, 8))
         history.columnconfigure(0, weight=1)
         history.rowconfigure(0, weight=1)
         self.history_label = history
         self.results = ttk.Treeview(history, columns=("date", "channel", "company", "position"), show="headings", height=4)
-        for key, label, width in (("date", "Applied", 70), ("channel", "Channel", 75),
-                                  ("company", "Company", 80), ("position", "Role", 105)):
+        for key, label, width in (("date", "Applied", 105), ("channel", "Channel", 145),
+                                  ("company", "Company", 145), ("position", "Role", 260)):
             self.results.heading(key, text=label)
-            self.results.column(key, width=width, minwidth=width)
+            self.results.column(key, width=width, minwidth=width, stretch=False)
         self.results.grid(row=0, column=0, sticky="nsew")
-        self.results.bind("<Configure>", lambda event: self._resize_table(
-            event.widget, (("date", .20), ("channel", .25), ("company", .24), ("position", .31))
-        ))
+        self.results.bind(
+            "<Configure>",
+            lambda _event: self.root.after_idle(self._position_empty_history),
+            add="+",
+        )
         self.history_scroll = ttk.Scrollbar(history, orient="vertical", command=self.results.yview)
         self.history_scroll.grid(row=0, column=1, sticky="ns")
         self.history_scroll_x = ttk.Scrollbar(history, orient="horizontal", command=self.results.xview)
@@ -151,7 +157,7 @@ class Workbench:
             xscrollcommand=self.history_scroll_x.set,
         )
         self.empty_history_label = ttk.Label(
-            history,
+            self.results,
             text="No previous application found",
             anchor="center",
         )
@@ -159,26 +165,34 @@ class Workbench:
         self.details_label = ttk.Label(history, textvariable=self.details, wraplength=315)
         self.details_label.grid(row=2, column=0, columnspan=2, sticky="w", pady=(5, 0))
         self.results.bind("<<TreeviewSelect>>", self.show_details)
+        self.set_analysis("")
         self.show_empty_history()
 
         resumes = ttk.LabelFrame(self.left, text="Resumes", padding=10)
         resumes.grid(row=3, column=0, sticky="ew", pady=8)
+        self.resumes_box = resumes
         resumes.columnconfigure(0, weight=1)
         self.resume_table = ttk.Treeview(resumes, columns=("use", "name", "updated"), show="headings", height=3)
         for key, label, width in (("use", "Use", 38), ("name", "Resume", 190), ("updated", "Updated", 75)):
             self.resume_table.heading(key, text=label)
-            self.resume_table.column(key, width=width, minwidth=35)
+            self.resume_table.column(key, width=width, minwidth=width)
         self.resume_table.grid(row=0, column=0, columnspan=4, sticky="ew")
+        resume_scroll = ttk.Scrollbar(resumes, orient="vertical", command=self.resume_table.yview)
+        resume_scroll.grid(row=0, column=4, sticky="ns")
+        self.resume_scroll_x = ttk.Scrollbar(resumes, orient="horizontal", command=self.resume_table.xview)
+        self.resume_scroll_x.grid(row=1, column=0, columnspan=4, sticky="ew")
+        self.resume_table.configure(yscrollcommand=resume_scroll.set, xscrollcommand=self.resume_scroll_x.set)
         self.resume_table.bind("<Double-1>", lambda _event: self.toggle_resume())
         self.resume_table.bind("<Configure>", lambda event: self._resize_table(
             event.widget, (("use", .12), ("name", .61), ("updated", .27))
         ))
+        self.resume_table.bind("<Configure>", lambda _event: self._update_resume_scrollbar(), add="+")
         for column in range(4):
             resumes.columnconfigure(column, weight=1)
-        ttk.Button(resumes, text="Add", command=self.add_resumes).grid(row=1, column=0, sticky="w", pady=(6, 0))
-        ttk.Button(resumes, text="Replace", command=self.replace_resume).grid(row=1, column=1, pady=(6, 0))
-        ttk.Button(resumes, text="Rename", command=self.rename_resume).grid(row=1, column=2, pady=(6, 0))
-        ttk.Button(resumes, text="Remove", command=self.remove_resume).grid(row=1, column=3, sticky="e", pady=(6, 0))
+        ttk.Button(resumes, text="Add", command=self.add_resumes).grid(row=2, column=0, sticky="w", pady=(6, 0))
+        ttk.Button(resumes, text="Replace", command=self.replace_resume).grid(row=2, column=1, pady=(6, 0))
+        ttk.Button(resumes, text="Rename", command=self.rename_resume).grid(row=2, column=2, pady=(6, 0))
+        ttk.Button(resumes, text="Remove", command=self.remove_resume).grid(row=2, column=3, sticky="e", pady=(6, 0))
 
     def _build_chart(self):
         ttk.Label(self.right, text="Application funnel", font=("Segoe UI", 14, "bold")).grid(row=0, column=0, sticky="w")
@@ -196,16 +210,49 @@ class Workbench:
     def _resize_table(table, columns):
         available = max(1, table.winfo_width() - 24)
         for name, ratio in columns:
-            table.column(name, width=max(45, int(available * ratio)), stretch=True)
+            minimum = int(table.column(name, "minwidth"))
+            table.column(name, width=max(minimum, int(available * ratio)), stretch=True)
+
+    def _update_resume_scrollbar(self):
+        if not hasattr(self, "resume_scroll_x"):
+            return
+        content_width = sum(int(self.resume_table.column(name, "width")) for name in ("use", "name", "updated"))
+        viewport_width = max(1, self.resume_table.winfo_width() - 2)
+        if content_width > viewport_width:
+            self.resume_scroll_x.grid()
+        else:
+            self.resume_scroll_x.grid_remove()
 
     def _resize_left_content(self, event):
         wrap = max(230, event.width - 55)
         for label in (self.model_status_label, self.job_title_label, self.lookup_status_label):
             label.configure(wraplength=wrap)
         self.details_label.configure(wraplength=wrap - 15)
-        self._resize_table(self.results, (
-            ("date", .20), ("channel", .25), ("company", .24), ("position", .31)
+        self._resize_table(self.resume_table, (
+            ("use", .12), ("name", .61), ("updated", .27)
         ))
+        self._update_resume_scrollbar()
+        compact = event.height < 720
+        analysis_height = 2 if compact else 7
+        history_height = 100 if compact else 145
+        resume_height = 1 if compact else 3
+        if int(self.analysis_text["height"]) != analysis_height:
+            self.analysis_text.configure(height=analysis_height)
+        self.job_check.rowconfigure(5, minsize=history_height)
+        if int(self.resume_table["height"]) != resume_height:
+            self.resume_table.configure(height=resume_height)
+        if compact:
+            self.details_label.grid_remove()
+        else:
+            self.details_label.grid()
+        if compact != self._compact_layout:
+            self._compact_layout = compact
+            self.left.configure(padding=(18, 2) if compact else 18)
+            self.date_box.grid_configure(
+                pady=(2, 2) if compact else (16, 8)
+            )
+            self.job_check.grid_configure(pady=2 if compact else 8)
+            self.resumes_box.grid_configure(pady=2 if compact else 8)
 
     def _schedule_chart_layout(self, _event=None):
         if self._chart_resize_job is not None:
@@ -220,6 +267,10 @@ class Workbench:
         self.model_status.set("Basic version · Local assessment")
 
     def set_analysis(self, text):
+        if text:
+            self.analysis_frame.grid()
+        else:
+            self.analysis_frame.grid_remove()
         self.analysis_text.configure(state="normal")
         self.analysis_text.delete("1.0", "end")
         self.analysis_text.insert("1.0", text)
@@ -227,26 +278,31 @@ class Workbench:
 
     def set_history_visible(self, visible):
         self.history_label.grid()
-        if visible:
-            self.empty_history_label.grid_remove()
-            self.results.grid()
-            self.history_scroll.grid()
-            self.history_scroll_x.grid()
-        else:
-            self.results.grid_remove()
-            self.history_scroll.grid_remove()
-            self.history_scroll_x.grid_remove()
-            self.empty_history_label.grid(
-                row=0,
-                column=0,
-                columnspan=2,
-                sticky="nsew",
-            )
+        self.empty_history_label.place_forget()
+        self.results.grid()
+        self.history_scroll.grid()
+        self.history_scroll_x.grid()
 
     def show_empty_history(self):
         self.results.delete(*self.results.get_children())
-        self.set_history_visible(False)
+        self.results.insert("", "end", iid="empty", values=("", "", "", ""))
+        self.set_history_visible(True)
+        self.root.after_idle(self._position_empty_history)
         self.details.set("")
+
+    def _position_empty_history(self):
+        if not self.results.exists("empty"):
+            self.empty_history_label.place_forget()
+            return
+        bounds = self.results.bbox("empty")
+        if bounds:
+            _x, y, _width, height = bounds
+            self.empty_history_label.place(
+                x=1,
+                y=y,
+                width=max(1, self.results.winfo_width() - 2),
+                height=height,
+            )
 
     def _build_footer(self):
         footer = ttk.Frame(self.root, padding=(18, 6, 18, 12))
