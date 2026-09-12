@@ -1,7 +1,7 @@
 import queue
 import threading
 import tkinter as tk
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 from zoneinfo import ZoneInfo
@@ -16,6 +16,13 @@ from persistence.DataAccessJob import DataAccessJob
 from visualization.DateRangeDialog import DateRangeDialog
 
 DEFAULT_START_DATE = "2026-02-10"
+TORONTO_TIMEZONE = ZoneInfo("America/Toronto")
+
+
+def milliseconds_until_next_midnight(now):
+    tomorrow = now.date() + timedelta(days=1)
+    next_midnight = datetime.combine(tomorrow, time.min, tzinfo=TORONTO_TIMEZONE)
+    return max(1_000, int((next_midnight.timestamp() - now.timestamp()) * 1_000))
 
 
 def format_assessment(result):
@@ -34,6 +41,7 @@ class Workbench:
         self.events, self.resume_paths, self.matches, self.history_rows, self.posting = queue.Queue(), [], [], [], None
         self.analyzing = False
         self._chart_resize_job = None
+        self._daily_sync_job = None
         self.root = tk.Tk()
         self.root.title("JobTrack")
         screen_width = self.root.winfo_screenwidth()
@@ -63,6 +71,7 @@ class Workbench:
         self.refresh_resumes()
         self.refresh_chart()
         self.root.after(100, self.poll)
+        self.schedule_daily_sync()
 
     def _build_dates(self):
         today = datetime.now(ZoneInfo("America/Toronto")).date().isoformat()
@@ -406,6 +415,15 @@ class Workbench:
             except Exception as error:
                 self.events.put(("sync", (type(error).__name__, 0)))
         threading.Thread(target=worker, daemon=True).start()
+
+    def schedule_daily_sync(self):
+        delay = milliseconds_until_next_midnight(datetime.now(TORONTO_TIMEZONE))
+        self._daily_sync_job = self.root.after(delay, self._run_daily_sync)
+
+    def _run_daily_sync(self):
+        self._daily_sync_job = None
+        self.start_sync()
+        self.schedule_daily_sync()
 
     def poll(self):
         try:

@@ -24,6 +24,9 @@ User selects Sync Gmail
         -> DataAccess writes jobs, evidence, and sync metadata
         -> Workbench refreshes the funnel
 
+While JobTrack remains open
+    -> Workbench schedules the same Gmail sync at Toronto midnight
+
 User pastes a public job URL
     -> DuplicateService.fetch_posting()
         -> direct HTTP request
