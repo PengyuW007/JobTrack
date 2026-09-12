@@ -142,13 +142,18 @@ class Workbench:
         self.results.bind("<Configure>", lambda event: self._resize_table(
             event.widget, (("date", .20), ("channel", .25), ("company", .24), ("position", .31))
         ))
-        history_scroll = ttk.Scrollbar(history, orient="vertical", command=self.results.yview)
-        history_scroll.grid(row=0, column=1, sticky="ns")
-        history_scroll_x = ttk.Scrollbar(history, orient="horizontal", command=self.results.xview)
-        history_scroll_x.grid(row=1, column=0, sticky="ew")
+        self.history_scroll = ttk.Scrollbar(history, orient="vertical", command=self.results.yview)
+        self.history_scroll.grid(row=0, column=1, sticky="ns")
+        self.history_scroll_x = ttk.Scrollbar(history, orient="horizontal", command=self.results.xview)
+        self.history_scroll_x.grid(row=1, column=0, sticky="ew")
         self.results.configure(
-            yscrollcommand=history_scroll.set,
-            xscrollcommand=history_scroll_x.set,
+            yscrollcommand=self.history_scroll.set,
+            xscrollcommand=self.history_scroll_x.set,
+        )
+        self.empty_history_label = ttk.Label(
+            history,
+            text="No previous application found",
+            anchor="center",
         )
         self.details = tk.StringVar()
         self.details_label = ttk.Label(history, textvariable=self.details, wraplength=315)
@@ -218,10 +223,25 @@ class Workbench:
 
     def set_history_visible(self, visible):
         self.history_label.grid()
+        if visible:
+            self.empty_history_label.grid_remove()
+            self.results.grid()
+            self.history_scroll.grid()
+            self.history_scroll_x.grid()
+        else:
+            self.results.grid_remove()
+            self.history_scroll.grid_remove()
+            self.history_scroll_x.grid_remove()
+            self.empty_history_label.grid(
+                row=0,
+                column=0,
+                columnspan=2,
+                sticky="nsew",
+            )
 
     def show_empty_history(self):
         self.results.delete(*self.results.get_children())
-        self.results.insert("", "end", iid="empty", values=("", "No previous application found", "", ""))
+        self.set_history_visible(False)
         self.details.set("")
 
     def _build_footer(self):
@@ -347,7 +367,6 @@ class Workbench:
         self.lookup_status.set("")
         self.set_analysis("")
         self.show_empty_history()
-        self.set_history_visible(True)
 
     def _fetch_worker(self, url):
         try:
