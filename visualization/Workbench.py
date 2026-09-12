@@ -186,7 +186,11 @@ class Workbench:
         self.axes = self.figure.add_subplot(111)
         self.canvas = FigureCanvasTkAgg(self.figure, master=self.right)
         self.canvas.get_tk_widget().grid(row=1, column=0, sticky="nsew")
-        self.canvas.get_tk_widget().bind("<Configure>", self._schedule_chart_layout)
+        self.canvas.get_tk_widget().bind(
+            "<Configure>",
+            self._schedule_chart_layout,
+            add="+",
+        )
 
     @staticmethod
     def _resize_table(table, columns):
