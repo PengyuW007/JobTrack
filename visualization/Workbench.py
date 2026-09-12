@@ -50,8 +50,8 @@ class Workbench:
         initial_height = min(950, max(680, int(screen_height * .82)))
         self.root.geometry(f"{initial_width}x{initial_height}")
         self.root.minsize(900, 680)
-        self.root.columnconfigure(0, weight=2, minsize=350)
-        self.root.columnconfigure(1, weight=3, minsize=430)
+        self.root.columnconfigure(0, weight=6, minsize=420)
+        self.root.columnconfigure(1, weight=5, minsize=360)
         self.root.rowconfigure(0, weight=1)
         self.root.rowconfigure(1, weight=0)
         self.left = ttk.Frame(self.root, padding=18)
@@ -98,7 +98,7 @@ class Workbench:
         box = ttk.LabelFrame(self.left, text="Job check", padding=10)
         box.grid(row=2, column=0, sticky="nsew", pady=8)
         box.columnconfigure(0, weight=1)
-        box.rowconfigure(5, weight=1, minsize=125)
+        box.rowconfigure(5, weight=1, minsize=145)
         model_row = ttk.Frame(box)
         model_row.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 7))
         model_row.columnconfigure(0, weight=1)
@@ -134,20 +134,25 @@ class Workbench:
         history.rowconfigure(0, weight=1)
         self.history_label = history
         self.results = ttk.Treeview(history, columns=("date", "channel", "company", "position"), show="headings", height=4)
-        for key, label, width in (("date", "Applied", 78), ("channel", "Channel", 105),
-                                  ("company", "Company", 95), ("position", "Role", 130)):
+        for key, label, width in (("date", "Applied", 70), ("channel", "Channel", 75),
+                                  ("company", "Company", 80), ("position", "Role", 105)):
             self.results.heading(key, text=label)
-            self.results.column(key, width=width, minwidth=55)
+            self.results.column(key, width=width, minwidth=width)
         self.results.grid(row=0, column=0, sticky="nsew")
         self.results.bind("<Configure>", lambda event: self._resize_table(
             event.widget, (("date", .20), ("channel", .25), ("company", .24), ("position", .31))
         ))
         history_scroll = ttk.Scrollbar(history, orient="vertical", command=self.results.yview)
         history_scroll.grid(row=0, column=1, sticky="ns")
-        self.results.configure(yscrollcommand=history_scroll.set)
+        history_scroll_x = ttk.Scrollbar(history, orient="horizontal", command=self.results.xview)
+        history_scroll_x.grid(row=1, column=0, sticky="ew")
+        self.results.configure(
+            yscrollcommand=history_scroll.set,
+            xscrollcommand=history_scroll_x.set,
+        )
         self.details = tk.StringVar()
         self.details_label = ttk.Label(history, textvariable=self.details, wraplength=315)
-        self.details_label.grid(row=1, column=0, columnspan=2, sticky="w", pady=(5, 0))
+        self.details_label.grid(row=2, column=0, columnspan=2, sticky="w", pady=(5, 0))
         self.results.bind("<<TreeviewSelect>>", self.show_details)
         self.show_empty_history()
 
@@ -172,7 +177,7 @@ class Workbench:
 
     def _build_chart(self):
         ttk.Label(self.right, text="Application funnel", font=("Segoe UI", 14, "bold")).grid(row=0, column=0, sticky="w")
-        self.figure = Figure(figsize=(7, 6), dpi=100)
+        self.figure = Figure(figsize=(5.5, 6), dpi=100, layout="constrained")
         self.axes = self.figure.add_subplot(111)
         self.canvas = FigureCanvasTkAgg(self.figure, master=self.right)
         self.canvas.get_tk_widget().grid(row=1, column=0, sticky="nsew")
@@ -200,7 +205,6 @@ class Workbench:
 
     def _finish_chart_layout(self):
         self._chart_resize_job = None
-        self.figure.tight_layout()
         self.canvas.draw_idle()
 
     def update_model_status(self, result=None):
@@ -255,7 +259,6 @@ class Workbench:
             pct = count / counts[0] * 100 if counts[0] else 0
             self.axes.text(bar.get_width() + maximum * .02, bar.get_y() + bar.get_height() / 2, f"{count}  {pct:.0f}%", va="center")
         self.axes.set_title(f"{start}  –  {end}")
-        self.figure.tight_layout()
         self.canvas.draw_idle()
 
     @staticmethod
