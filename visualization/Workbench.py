@@ -234,7 +234,9 @@ class Workbench:
         self._update_resume_scrollbar()
         compact = event.height < 720
         analysis_height = 2 if compact else 7
-        history_height = 100 if compact else 145
+        # Keep a stable history panel height regardless of row count so the
+        # Job check section does not collapse when there are few/no matches.
+        history_height = 180 if compact else 220
         resume_height = 1 if compact else 3
         if int(self.analysis_text["height"]) != analysis_height:
             self.analysis_text.configure(height=analysis_height)
