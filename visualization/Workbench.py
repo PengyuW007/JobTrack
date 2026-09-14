@@ -112,7 +112,7 @@ class Workbench:
         self.url = tk.StringVar()
         entry = ttk.Entry(box, textvariable=self.url)
         entry.grid(row=1, column=0, sticky="ew")
-        entry.bind("<<Paste>>", lambda _event: self.root.after_idle(self.lookup_url))
+        entry.bind("<<Paste>>", lambda _event: self.root.after_idle(self._paste_and_lookup))
         entry.bind("<Return>", lambda _event: self.lookup_url())
         self.clear_button = ttk.Button(box, text="Clear", command=self.clear_job)
         self.clear_button.grid(row=1, column=1, padx=(6, 0))
@@ -419,16 +419,26 @@ class Workbench:
         self.set_history_visible(True)
         threading.Thread(target=self._fetch_worker, args=(url,), daemon=True).start()
 
-    def clear_job(self):
+    def _paste_and_lookup(self):
+        # A pasted URL starts a new check; discard any recommendation from the
+        # previous posting before the new fetch begins.
+        self._clear_job_result()
+        self.lookup_url()
+
+    def _clear_job_result(self):
         self.analyzing = False
-        self.url.set("")
         self.posting = None
         self.matches = []
         self.history_rows = []
         self.job_title.set("Paste a job URL from any public platform")
         self.lookup_status.set("")
         self.set_analysis("")
+        self.results.delete(*self.results.get_children())
         self.show_empty_history()
+
+    def clear_job(self):
+        self.url.set("")
+        self._clear_job_result()
 
     def _fetch_worker(self, url):
         try:
@@ -473,11 +483,16 @@ class Workbench:
     def start_resume_match(self):
         self.set_analysis("Comparing resumes…")
         job_context = f"{self.posting.position}\n{self.posting.description}"
-        threading.Thread(target=self._resume_worker, args=(job_context, tuple(self.resume_paths)), daemon=True).start()
+        posting_url = self.posting.url
+        threading.Thread(
+            target=self._resume_worker,
+            args=(posting_url, job_context, tuple(self.resume_paths)),
+            daemon=True,
+        ).start()
 
-    def _resume_worker(self, description, paths):
+    def _resume_worker(self, posting_url, description, paths):
         result, errors = recommend(description, paths, "local")
-        self.events.put(("resume", (result, errors)))
+        self.events.put(("resume", (posting_url, result, errors)))
 
     def show_details(self, _event=None):
         selected = self.results.selection()
@@ -518,7 +533,9 @@ class Workbench:
                     if value.url == self.url.get().strip():
                         self.show_posting(value)
                 elif kind == "resume":
-                    result, errors = value
+                    posting_url, result, errors = value
+                    if not self.posting or posting_url != self.posting.url:
+                        continue
                     if result:
                         self.update_model_status(result)
                         self.set_analysis(format_assessment(result))

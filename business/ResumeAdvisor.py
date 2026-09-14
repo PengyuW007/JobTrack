@@ -37,6 +37,16 @@ SPECIALIZATIONS = {
 }
 
 
+def core_job_description(description):
+    """Remove job-board recommendation/search content appended after the JD."""
+    return re.split(
+        r"\n\s*(?:show more show less|seniority level|similar jobs|people also viewed|similar searches)\b",
+        description or "",
+        maxsplit=1,
+        flags=re.IGNORECASE,
+    )[0]
+
+
 def detected_specializations(text):
     normalized = re.sub(r"[^a-z0-9+#.]+", " ", text.casefold())
     padded = f" {normalized} "
@@ -69,9 +79,17 @@ def read_resume(path):
 
 
 def local_recommendation(description, resumes):
+    description = core_job_description(description)
     job_text = description.casefold()
-    job_title = description.splitlines()[0] if description.splitlines() else description
+    lines = description.splitlines()
+    job_title = lines[0] if lines else description
+    # Some postings use a generic title (for example, "Software Engineer")
+    # and state the actual track in the opening description. Include the
+    # opening section so a Full Stack/QA role is not matched to an unrelated
+    # resume merely because of generic skills such as Git or Python.
     title_specializations = detected_specializations(job_title)
+    if not title_specializations:
+        title_specializations = detected_specializations(description)
     job_skills = {skill for skill in SKILLS if skill in job_text}
     qualification_text = job_text.split("qualifications", 1)[-1]
     required_skills = {

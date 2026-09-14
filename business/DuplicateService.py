@@ -224,6 +224,19 @@ def _fetch_with_browser(url):
                     return elements[0].text.strip()
             return ''
 
+        def complete_text_from(selectors):
+            for selector in selectors:
+                elements = driver.find_elements(By.CSS_SELECTOR, selector)
+                if not elements:
+                    continue
+                value = driver.execute_script(
+                    "return arguments[0].textContent || '';",
+                    elements[0],
+                )
+                if value and value.strip():
+                    return value.strip()
+            return ''
+
         position = text_from((
             '[data-testid="jobsearch-JobInfoHeader-title"]',
             '.jobsearch-JobInfoHeader-title',
@@ -240,7 +253,7 @@ def _fetch_with_browser(url):
             '.job-details-jobs-unified-top-card__company-name',
             '.top-card-layout__card .topcard__flavor a',
         ))
-        description = text_from((
+        description = complete_text_from((
             '[data-testid="jobDescriptionText"]',
             '#jobDescriptionText',
             '.show-more-less-html__markup',

@@ -71,6 +71,33 @@ class ResumeAdvisorTests(unittest.TestCase):
             result, _ = recommend(job, [full_stack, qa], 'local')
             self.assertEqual(result['file'], 'QA_Resume.txt')
 
+    def test_generic_title_uses_full_description_for_specialization(self):
+        with tempfile.TemporaryDirectory() as folder:
+            full_stack = Path(folder, 'FullStack_Resume.txt')
+            java = Path(folder, 'Java_Resume.txt')
+            full_stack.write_text('Python React TypeScript AWS', encoding='utf-8')
+            java.write_text('Python React TypeScript AWS Java', encoding='utf-8')
+            introduction = "\n".join(f'Company introduction line {index}' for index in range(15))
+            job = f'''Software Engineer
+            {introduction}
+            Build full-stack web features with React, TypeScript, Python, and AWS.'''
+            result, _ = recommend(job, [java, full_stack], 'local')
+            self.assertEqual(result['file'], 'FullStack_Resume.txt')
+
+    def test_linkedin_related_content_does_not_change_resume_track(self):
+        with tempfile.TemporaryDirectory() as folder:
+            full_stack = Path(folder, 'FullStack_Resume.txt')
+            java = Path(folder, 'Java_Resume.txt')
+            full_stack.write_text('React TypeScript Python AWS', encoding='utf-8')
+            java.write_text('React TypeScript Python AWS Java Spring SQL', encoding='utf-8')
+            job = '''Software Engineer
+            Build full-stack web features using React, TypeScript, Python, and AWS.
+            Show more Show less
+            Similar jobs
+            Java Software Engineer jobs using Java, Spring, and SQL.'''
+            result, _ = recommend(job, [java, full_stack], 'local')
+            self.assertEqual(result['file'], 'FullStack_Resume.txt')
+
     def test_non_technical_job_selects_specialized_resume(self):
         with tempfile.TemporaryDirectory() as folder:
             developer = Path(folder, 'Software_Resume.txt')
