@@ -87,14 +87,37 @@ class Workbench:
             entry = ttk.Entry(box, textvariable=value, width=16)
             entry.grid(row=row, column=1, sticky="ew", pady=3)
             entry.bind("<Return>", lambda _event: self.refresh_chart())
-            ttk.Button(box, text="Calendar", command=lambda v=value: DateRangeDialog.open_calendar(self.root, v)).grid(row=row, column=2, padx=(6, 0))
+            ttk.Button(
+                box,
+                text="Calendar",
+                width=9,
+                command=lambda v=value: DateRangeDialog.open_calendar(self.root, v),
+            ).grid(row=row, column=2, padx=(6, 0))
         quick = ttk.Frame(box)
-        quick.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(7, 0))
-        for column, (label, days) in enumerate((("7D", 7), ("30D", 30), ("90D", 90), ("All", None))):
-            quick.columnconfigure(column, weight=1)
-            ttk.Button(quick, text=label, command=lambda d=days: self.quick_range(d)).grid(row=0, column=column, padx=(0, 4), sticky="ew")
-        quick.columnconfigure(4, weight=1)
-        ttk.Button(quick, text="Update", command=self.refresh_chart).grid(row=0, column=4, sticky="ew")
+        quick.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(7, 0))
+        shortcuts = (
+            ("Today", 1, 0),
+            ("Yesterday", 1, 1),
+            ("7D", 7, 0),
+            ("30D", 30, 0),
+            ("90D", 90, 0),
+            ("All", None, 0),
+        )
+        for column in range(3):
+            quick.columnconfigure(column, weight=1, uniform="date-shortcut")
+        for index, (label, days, end_offset) in enumerate(shortcuts):
+            row, column = divmod(index, 3)
+            ttk.Button(
+                quick,
+                text=label,
+                command=lambda d=days, offset=end_offset: self.quick_range(d, offset),
+            ).grid(row=row, column=column, padx=(0, 4), pady=(0, 4), sticky="ew")
+        ttk.Button(
+            box,
+            text="Update",
+            width=9,
+            command=self.refresh_chart,
+        ).grid(row=2, column=2, padx=(6, 0), pady=(7, 0), sticky="n")
 
     def _build_lookup(self):
         box = ttk.LabelFrame(self.left, text="Job check", padding=10)
@@ -316,11 +339,12 @@ class Workbench:
         self.sync_status = tk.StringVar(value=f"Last synced at {last_sync}" if last_sync else "Never synced")
         ttk.Label(footer, textvariable=self.sync_status).grid(row=0, column=1, sticky="e")
 
-    def quick_range(self, days):
+    def quick_range(self, days, end_offset=0):
         today = datetime.now(ZoneInfo("America/Toronto")).date()
         first = self.dao.get_first_application_date()
-        self.start.set((today - timedelta(days=days - 1)).isoformat() if days else first[:10] if first else today.isoformat())
-        self.end.set(today.isoformat())
+        range_end = today - timedelta(days=end_offset)
+        self.start.set((range_end - timedelta(days=days - 1)).isoformat() if days else first[:10] if first else range_end.isoformat())
+        self.end.set(range_end.isoformat())
         self.refresh_chart()
 
     def refresh_chart(self):

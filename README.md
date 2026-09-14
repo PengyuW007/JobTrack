@@ -38,7 +38,7 @@ Detailed Windows and macOS instructions appear below. Complete the steps for you
 ### Application funnel
 
 - Shows Applications, Rejected, Assessments, Interviews, and Offers.
-- Supports custom From and To dates plus 7D, 30D, 90D, and All shortcuts.
+- Supports custom From and To dates plus Today, Yesterday, 7D, 30D, 90D, and All shortcuts.
 - Uses February 10, 2026 as the initial From date.
 - Applies the selected date range to the chart only.
 
