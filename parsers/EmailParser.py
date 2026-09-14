@@ -6,6 +6,16 @@ class EmailParser:
     @staticmethod
     def extract_company(sender, subject, body):
 
+        # Indeed confirmations identify the employer in the subject, while
+        # the sender is only the generic "Indeed Apply" mailbox.
+        match = re.search(
+            r"Indeed Application:.*?sent to\s+(.+?)(?:\.|$)",
+            subject or "",
+            re.IGNORECASE,
+        )
+        if match:
+            return match.group(1).strip()
+
         # Rule 1
         # Analyticsmart <no-reply@...>
 
@@ -78,7 +88,7 @@ class EmailParser:
         subject_patterns = [
             r"^(.+?)\s*-\s*STACK IT Recruitment",
             r"^(.+?)\s*-\s*[A-Za-z0-9 &,.]+$",
-            r"Indeed Application:\s*(.+)",
+            r"Indeed Application:\s*(.+?)(?:\s+-\s+The following items were sent to|$)",
             r"Application for\s*(.+?)\s*with",
             r"Application for\s*(.+)",
         ]
