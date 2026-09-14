@@ -225,16 +225,24 @@ def _fetch_with_browser(url):
             return ''
 
         position = text_from((
+            '[data-testid="jobsearch-JobInfoHeader-title"]',
+            '.jobsearch-JobInfoHeader-title',
+            'h1[data-testid="jobsearch-JobInfoHeader-title"]',
             'h1.top-card-layout__title',
             '.job-details-jobs-unified-top-card__job-title h1',
             'h1',
         ))
         company = text_from((
+            '[data-testid="inlineHeader-companyName"]',
+            '[data-testid="jobsearch-InlineCompanyRating"]',
+            '.jobsearch-InlineCompanyRating',
             '.topcard__org-name-link',
             '.job-details-jobs-unified-top-card__company-name',
             '.top-card-layout__card .topcard__flavor a',
         ))
         description = text_from((
+            '[data-testid="jobDescriptionText"]',
+            '#jobDescriptionText',
             '.show-more-less-html__markup',
             '.jobs-description__content',
             '.jobs-box__html-content',
