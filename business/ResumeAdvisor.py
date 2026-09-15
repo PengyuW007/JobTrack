@@ -14,6 +14,8 @@ SKILLS = {
     "python", "react", "recruiting", "rest", "sales", "salesforce", "scheduling", "scrum",
     "social media", "spark", "sql", "supply chain", "tableau", "teaching", "terraform",
     "typescript", "user research", "ux", "vue", "writing",
+    "flutter", "android", "ios", "swift", "kotlin", "playwright",
+    "api testing", "regression testing", "test automation", "fastapi", "postgres",
 }
 
 SPECIALIZATIONS = {
@@ -22,6 +24,8 @@ SPECIALIZATIONS = {
         "web development", "web application", "web applications",
     ),
     "java": ("java",),
+    "mobile": ("mobile", "android", "ios", "flutter"),
+    "software": ("sde", "software developer", "software engineer"),
     "qa": (
         "qa", "quality assurance", "quality engineer", "quality engineering",
         "software quality", "quality automation", "automation tools",
@@ -82,9 +86,34 @@ def read_resume(path):
     raise ValueError("Supported formats: PDF, DOCX, TXT, MD")
 
 
+def detected_skills(text):
+    return {skill for skill in SKILLS
+            if re.search(r"(?<!\w)" + re.escape(skill) + r"(?!\w)", text, re.IGNORECASE)}
+
+
+def job_sections(description):
+    # Headings may be adjacent to text when extracted from HTML textContent.
+    parts = re.split(
+        r"(nice to have|preferred qualifications|what we offer|benefits|"
+        r"what we.re looking for|requirements|qualifications|what you.ll do|the role)",
+        description, flags=re.IGNORECASE,
+    )
+    core, optional = [parts[0]], []
+    if len(parts) > 1:
+        # Company introductions are not job requirements.
+        core = [description.splitlines()[0]]
+        for heading, body in zip(parts[1::2], parts[2::2]):
+            if heading.casefold() in ("nice to have", "preferred qualifications"):
+                optional.append(body)
+            elif heading.casefold() not in ("what we offer", "benefits"):
+                core.append(body)
+    return "\n".join(core), "\n".join(optional)
+
+
 def local_recommendation(description, resumes):
     description = core_job_description(description)
-    job_text = description.casefold()
+    core, optional = job_sections(description)
+    job_text = core.casefold()
     lines = description.splitlines()
     job_title = lines[0] if lines else description
     # Some postings use a generic title (for example, "Software Engineer")
@@ -92,23 +121,30 @@ def local_recommendation(description, resumes):
     # opening section so a Full Stack/QA role is not matched to an unrelated
     # resume merely because of generic skills such as Git or Python.
     title_specializations = detected_specializations(job_title)
-    if not title_specializations:
-        title_specializations = detected_specializations(description)
-    job_skills = {skill for skill in SKILLS if skill in job_text}
+    if not title_specializations or title_specializations == {"software"}:
+        # Generic software titles must not become Design/Data jobs because
+        # those words occur in company copy or routine engineering duties.
+        if "software" in title_specializations:
+            specific = detected_specializations(core) & {"full stack", "qa", "mobile"}
+            title_specializations = specific or {"software"}
+    job_skills = detected_skills(core)
+    optional_skills = detected_skills(optional) - job_skills
     qualification_text = job_text.split("qualifications", 1)[-1]
     required_skills = {
         skill for skill in job_skills
-        if any(skill in sentence and any(marker in sentence for marker in ("strong", "minimum", "required", "must"))
+        if any(skill in detected_skills(sentence) and any(marker in sentence for marker in ("strong", "minimum", "required", "must"))
                for sentence in re.split(r"[.\n]", qualification_text))
     }
     weights = {skill: (3 if skill in required_skills else .5 if skill in ("agile", "scrum", "git", "leadership") else 1) for skill in job_skills}
+    weights.update({skill: .25 for skill in optional_skills})
+    job_skills |= optional_skills
     total_weight = sum(weights.values()) or 1
     minimum_years_match = re.search(r"minimum\s+(\d+)\+?\s+years", job_text)
     minimum_years = int(minimum_years_match.group(1)) if minimum_years_match else 0
     ranked = []
     for path, text in resumes:
         resume_text = text.casefold()
-        overlap = sorted(job_skills & {skill for skill in SKILLS if skill in resume_text})
+        overlap = sorted(job_skills & detected_skills(resume_text))
         skill_ratio = sum(weights[skill] for skill in overlap) / total_weight
         name = Path(path).stem.casefold()
         resume_specializations = detected_specializations(name)
@@ -117,15 +153,16 @@ def local_recommendation(description, resumes):
             # A clear role direction in the title must outweigh generic
             # technology overlap. Otherwise a broad Full Stack resume can
             # beat a QA resume simply by listing more shared tools.
-            specialization_bonus = 8 if title_specializations & resume_specializations else -4 if resume_specializations else 0
-        elif detected_specializations(job_text) & resume_specializations:
-            specialization_bonus = 1.5
-        ranked.append((skill_ratio * 10 + specialization_bonus, path, overlap, resume_text))
+            compatible = title_specializations & resume_specializations
+            if title_specializations == {"software"}:
+                compatible = resume_specializations & {"software", "full stack", "java"}
+            specialization_bonus = 4 if compatible else -2 if resume_specializations else 0
+        ranked.append((skill_ratio * 10 + specialization_bonus, path, overlap, resume_text, skill_ratio))
     ranked.sort(reverse=True, key=lambda item: item[0])
     if not ranked:
         return None
-    rank_score, path, overlap, resume_text = ranked[0]
-    score = round(min(10, 2.5 + rank_score * .6), 1) if overlap else 2.5
+    rank_score, path, overlap, resume_text, skill_ratio = ranked[0]
+    score = round(skill_ratio * 10, 1) if overlap else 0.0
     missing_required = sorted(required_skills - set(overlap))
     lacks_experience = bool(minimum_years and (
         "intern" in resume_text and not re.search(rf"\b{minimum_years}\+?\s+years", resume_text)

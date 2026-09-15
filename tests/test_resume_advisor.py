@@ -2,11 +2,43 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from business.ResumeAdvisor import recommend
+from business.ResumeAdvisor import recommend, local_recommendation, detected_skills
 from visualization.Workbench import format_assessment
 
 
 class ResumeAdvisorTests(unittest.TestCase):
+    def test_skills_do_not_match_inside_other_words(self):
+        self.assertEqual(detected_skills('JavaScript interesting excellent'), {'javascript'})
+
+    def test_optional_mobile_and_company_copy_do_not_override_core_role(self):
+        job = '''Software Developer
+        Our data platform helps leaders. Collaborate with Design.
+        The Role
+        Deliver software features and automated tests.
+        Requirements
+        JavaScript TypeScript SQL .NET
+        Nice to Have
+        Flutter mobile frameworks
+        What We Offer
+        Healthcare and marketing events'''
+        resumes = [('Mobile.txt', 'JavaScript TypeScript SQL Flutter'),
+                   ('FullStack.txt', 'JavaScript TypeScript SQL'),
+                   ('QA.txt', 'SQL test automation')]
+        result = local_recommendation(job, resumes)
+        self.assertEqual(result['file'], 'FullStack.txt')
+        self.assertLess(result['score'], 8)
+
+    def test_direction_changes_ranking_without_inflating_score(self):
+        job = 'DevOps Software Quality Automation Tools Engineer\nPython SQL'
+        result = local_recommendation(job, [('FullStack.txt', 'Python SQL'), ('QA.txt', 'Python')])
+        self.assertEqual(result['file'], 'QA.txt')
+        self.assertEqual(result['score'], 5.0)
+
+    def test_mobile_role_still_selects_mobile_resume(self):
+        result = local_recommendation('Mobile Developer\nFlutter Android',
+                                      [('FullStack.txt', 'Flutter Android'), ('Mobile.txt', 'Flutter Android')])
+        self.assertEqual(result['file'], 'Mobile.txt')
+
     def test_basic_assessment_only_shows_resume_match_and_source(self):
         output = format_assessment({
             'file': 'FullStack.pdf', 'score': 4.9,
