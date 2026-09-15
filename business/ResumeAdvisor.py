@@ -17,7 +17,10 @@ SKILLS = {
 }
 
 SPECIALIZATIONS = {
-    "full stack": ("fullstack", "full stack", "full-stack"),
+    "full stack": (
+        "fullstack", "full stack", "full-stack", "web developer",
+        "web development", "web application", "web applications",
+    ),
     "java": ("java",),
     "qa": (
         "qa", "quality assurance", "quality engineer", "quality engineering",
