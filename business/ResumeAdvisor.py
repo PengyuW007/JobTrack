@@ -24,6 +24,7 @@ SPECIALIZATIONS = {
     "java": ("java",),
     "qa": (
         "qa", "quality assurance", "quality engineer", "quality engineering",
+        "software quality", "quality automation", "automation tools",
         "test automation", "automation tester", "automation engineer",
         "test engineer", "software engineer in test", "sdet", "tester",
     ),
@@ -113,7 +114,10 @@ def local_recommendation(description, resumes):
         resume_specializations = detected_specializations(name)
         specialization_bonus = 0
         if title_specializations:
-            specialization_bonus = 4 if title_specializations & resume_specializations else -2 if resume_specializations else 0
+            # A clear role direction in the title must outweigh generic
+            # technology overlap. Otherwise a broad Full Stack resume can
+            # beat a QA resume simply by listing more shared tools.
+            specialization_bonus = 8 if title_specializations & resume_specializations else -4 if resume_specializations else 0
         elif detected_specializations(job_text) & resume_specializations:
             specialization_bonus = 1.5
         ranked.append((skill_ratio * 10 + specialization_bonus, path, overlap, resume_text))
