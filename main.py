@@ -22,7 +22,7 @@ SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 CLASSIFIER_VERSION = 2
 
 
-def get_gmail_service():
+def get_gmail_service(interactive=True):
     creds = None
 
     if os.path.exists("token.json"):
@@ -32,12 +32,12 @@ def get_gmail_service():
             if creds and creds.expired and creds.refresh_token:
                 creds.refresh(Request())
 
-        except RefreshError:
-            print("Token expired or revoked. Removing token.json...")
-            os.remove("token.json")
+        except (RefreshError, ValueError):
             creds = None
 
     if not creds or not creds.valid:
+        if not interactive:
+            raise PermissionError("Reconnect Gmail using Sync Gmail")
         flow = InstalledAppFlow.from_client_secrets_file(
             "credentials.json",
             SCOPES
@@ -50,7 +50,7 @@ def get_gmail_service():
 
     return build("gmail", "v1", credentials=creds)
 
-def synchronize_gmail(progress=None):
+def synchronize_gmail(progress=None, interactive=True):
     db = DataAccess()
     db.create_tables()
 
@@ -60,7 +60,7 @@ def synchronize_gmail(progress=None):
             ZoneInfo("America/Toronto")
         ).strftime("%Y/%m/%d")
         sync_started_epoch = int(sync_started_at.timestamp())
-        service = get_gmail_service()
+        service = get_gmail_service(interactive=interactive)
         account_email = service.users().getProfile(
             userId="me"
         ).execute(num_retries=3).get("emailAddress", "").casefold()

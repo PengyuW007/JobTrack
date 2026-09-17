@@ -2,7 +2,7 @@
 
 JobTrack is a private desktop workspace for reviewing job opportunities and tracking applications. It imports job-related Gmail messages into a local SQLite database, displays an application funnel, checks whether a job may have been submitted before, and recommends one of the resumes selected by the user.
 
-The English interface uses a two-column layout: controls and job details appear on the left, while the date-filtered application funnel remains visible on the right.
+The English desktop interface keeps Job check and Resume choice on the left, with Application history, Resumes, and Application overview on the right. The window does not scroll as a page; long descriptions, evidence, and tables can scroll within their own panels.
 
 ## Start here
 
@@ -51,11 +51,14 @@ Detailed Windows and macOS instructions appear below. Complete the steps for you
 - Consolidates related messages and avoids duplicate Gmail message records.
 - Shows the last successful synchronization time.
 
-Gmail synchronization runs when the user selects **Sync Gmail**. The first synchronization may take longer because JobTrack must build the local history.
+Gmail synchronization runs once after startup when an existing local authorization token is present, and whenever the user selects **Sync Gmail**. There is no midnight or daily timer. Automatic synchronization never opens the authorization browser; select **Sync Gmail** to connect or reconnect. The first synchronization may take longer because JobTrack must build the local history.
+
+When synchronization ends, the chart and the currently checked job's application history refresh from the saved database. Resume assessment remains in place. If synchronization fails after saving some messages, the UI shows the incomplete-sync status while displaying the saved history.
 
 ### Job check and duplicate detection
 
 - Accepts a complete job URL from LinkedIn, Indeed, or another public platform.
+- Also accepts a pasted JD with an optional title and company. History checking requires a URL or both company and title; missing identifiers are shown as unavailable rather than as a negative result.
 - Starts automatically after a URL is pasted or Enter is pressed.
 - Reads public `JobPosting` structured data when available.
 - Uses browser fallback for sites that require JavaScript.
@@ -63,7 +66,7 @@ Gmail synchronization runs when the user selects **Sync Gmail**. The first synch
 - Detects exact URLs while ignoring common tracking parameters.
 - Preserves platform job identifiers during URL normalization.
 - Finds likely reposts when the company, title, and saved description are highly similar, even if the URL changed.
-- Keeps Application history hidden until a possible previous application is found.
+- Keeps Application history visible with distinct waiting, unavailable, no-match, possible-match, and exact-URL states.
 
 Some platforms block automated access or require login. In those cases, JobTrack may be unable to retrieve the job description. `No previous application found` means no sufficiently strong match was found in the available local evidence; it does not guarantee that the job was never submitted.
 
@@ -72,20 +75,26 @@ Some platforms block automated access or require login. In those cases, JobTrack
 - Adds PDF, DOCX, TXT, and Markdown resumes by local file reference.
 - Replaces, renames, or removes a saved resume entry.
 - Enables or disables individual resumes by double-clicking a row.
+- Uses **Set direction** to confirm one or more work directions independently of technologies such as Java. Labels are saved against the resume entry ID; renaming the entry does not change them.
 - Keeps resume files in their original folders; JobTrack stores only their paths and metadata in `tracker.db`.
 - Compares all enabled and available resumes when a job description is parsed.
+- Recomputes the current assessment when resume entries, directions, or enabled states change. Missing files and unreadable documents are reported instead of silently omitted.
 
 ### Basic resume recommendation
 
-The current basic result panel intentionally displays only:
+The Summary tab shows a resume choice, supporting source sentences, and requirements that need verification. The All resumes tab compares each readable candidate. For example:
 
 ```text
-Recommended: QA Resume.pdf
-Match: ★★★  6.1/10
-Local assessment
+Recommended: Full Stack Resume
+Local assessment · Resume choice, not a hiring prediction
+
+Job direction: full stack
+Project evidence: java, react, sql
 ```
 
-The local assessment uses deterministic skill and qualification rules. Its score is an estimate and may be less accurate for unusual roles or terminology.
+The local assessment uses deterministic English-language rules. It separates work direction from technologies, recognizes skill aliases, checks simple alternative requirements such as Java or Python, and evaluates all candidates before choosing. Resume filenames do not determine the ranking. A confirmed label or a skill list alone does not establish delivery evidence.
+
+The result can be Recommended, Provisional choice, Review two options, No suitable resume found, or More job information needed. Mixed requirements, unassessed qualifications, unknown experience, incomplete inputs, and unreadable candidates prevent an unqualified recommendation. Numeric star ratings are not displayed as confidence. Complex phrasing and unsupported terminology still need manual review; no measured real-world accuracy is claimed.
 
 ### Basic version
 
@@ -189,7 +198,7 @@ Each user must create personal Google OAuth credentials. Credentials are not inc
 7. Start JobTrack and select **Sync Gmail**.
 8. Complete Google authorization in the browser.
 
-Google then creates a local `token.json`. Later synchronizations reuse that token. If authorization is revoked or the token becomes invalid, JobTrack removes it and requests authorization again.
+Google then creates a local `token.json`. Later synchronizations reuse that token. If authorization is revoked or the token becomes invalid, automatic synchronization asks you to reconnect with **Sync Gmail**. A successful manual authorization replaces the local token.
 
 JobTrack requests only this Gmail scope:
 
@@ -205,11 +214,11 @@ Select **Sync Gmail** and complete Google authorization if prompted. Wait until 
 
 ### 2. Manage resumes
 
-Use **Add** to select local files. Double-click a row to enable or disable it. Use **Replace** for a newer file, **Rename** to change its display name, and **Remove** to delete its saved reference. Removing an entry does not delete the original file.
+Use **Add** to select local files. Double-click a row to enable or disable it. Use **Set direction** to confirm relevant work directions; a Java resume can be Backend or Full Stack depending on its contents. Use **Replace** for a newer file, **Rename** to change its display name, and **Remove** to delete its saved reference. Removing an entry does not delete the original file.
 
 ### 3. Check a job
 
-Paste a complete public job URL into Job check. Analysis begins automatically. JobTrack displays the parsed company and title, checks all imported application history, and compares the description with enabled resumes. Use **Clear** to remove the current URL and result.
+Paste a complete public job URL into Job check. Analysis begins automatically, or select **Check**. If the retrieved description is missing or incomplete, use the **Paste JD** tab. **Review JD** shows the description used by assessment. JobTrack checks all imported application history and compares enabled resumes. Use **Clear** to remove the current inputs and result.
 
 ### 4. Review previous applications
 

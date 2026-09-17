@@ -258,6 +258,7 @@ END,
 
     def delete_resume(self, resume_id):
         self.conn.execute("DELETE FROM resumes WHERE id = ?", (resume_id,))
+        self.conn.execute("DELETE FROM app_settings WHERE key = ?", (f"resume_roles_{resume_id}",))
         self.conn.commit()
 
     def get_setting(self, key, default=None):

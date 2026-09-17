@@ -1,5 +1,6 @@
 import re
 import zipfile
+from xml.etree import ElementTree
 from pathlib import Path
 
 SKILLS = {
@@ -16,21 +17,35 @@ SKILLS = {
     "typescript", "user research", "ux", "vue", "writing",
     "flutter", "android", "ios", "swift", "kotlin", "playwright",
     "api testing", "regression testing", "test automation", "fastapi", "postgres",
+    "react native", "next.js", "graphql", "mongodb", "express", "spring boot",
+    "spring", "angular", "html", "css", "redis", "mysql", "selenium", "pytest",
+}
+
+SKILL_ALIASES = {
+    "node": ("node", "node.js", "nodejs"),
+    "next.js": ("next.js", "nextjs", "next js"),
+    "postgres": ("postgres", "postgresql"),
+    "javascript": ("javascript",),
+    "typescript": ("typescript",),
+    "spring boot": ("spring boot", "springboot"),
+    "rest": ("rest", "restful"),
+    "ci/cd": ("ci/cd", "ci cd", "continuous integration", "continuous delivery"),
 }
 
 SPECIALIZATIONS = {
     "full stack": (
-        "fullstack", "full stack", "full-stack", "web developer",
-        "web development", "web application", "web applications",
+        "fullstack", "full stack", "full-stack",
     ),
-    "java": ("java",),
-    "mobile": ("mobile", "android", "ios", "flutter"),
+    "frontend": ("frontend", "front end", "front-end", "web frontend", "web interfaces"),
+    "backend": ("backend", "back end", "back-end", "server side", "backend api"),
+    "mobile": ("mobile", "android", "ios", "flutter", "react native"),
     "software": ("sde", "software developer", "software engineer"),
     "qa": (
         "qa", "quality assurance", "quality engineer", "quality engineering",
         "software quality", "quality automation", "automation tools",
         "test automation", "automation tester", "automation engineer",
         "test engineer", "software engineer in test", "sdet", "tester",
+        "api testing", "regression testing",
     ),
     "data": ("data", "analytics"),
     "finance": ("finance", "financial", "accounting", "bookkeeper"),
@@ -44,11 +59,30 @@ SPECIALIZATIONS = {
     "project management": ("project manager", "program manager", "project management"),
 }
 
+ROLE_LABELS = tuple(label for label in SPECIALIZATIONS if label != "software")
+_HEADINGS = re.compile(
+    r"\b(nice to have|preferred qualifications|preferred skills|bonus points|"
+    r"what we offer|benefits|about (?:us|the company)|"
+    r"what we.re looking for|requirements|qualifications|must have|"
+    r"what you.ll do|responsibilities|your responsibilities|the role)\s*:?",
+    re.IGNORECASE,
+)
+_OPTIONAL = {"nice to have", "preferred qualifications", "preferred skills", "bonus points"}
+_IGNORE = {"what we offer", "benefits", "about us", "about the company"}
+_ACTION = re.compile(
+    r"\b(build(?:s|ing)?|built|develop(?:s|ed|ing)?|deliver(?:s|ed|ing)?|"
+    r"implement(?:s|ed|ing)?|maintain(?:s|ed|ing)?|creat(?:e|es|ed|ing)|"
+    r"automat(?:e|es|ed|ing)|test(?:s|ed|ing)?(?!\s+(?:automation|engineer|tools))|"
+    r"design(?:s|ed|ing)?(?!\s+(?:patterns|systems))|deploy(?:s|ed|ing)?|led|"
+    r"lead(?:s|ing)?|manage(?:s|d)?|managing|plan(?:s|ned|ning)?|"
+    r"support(?:s|ed|ing)?|responsible for)\b", re.IGNORECASE,
+)
+
 
 def core_job_description(description):
     """Remove job-board recommendation/search content appended after the JD."""
     return re.split(
-        r"\n\s*(?:show more show less|seniority level|similar jobs|people also viewed|similar searches)\b",
+        r"(?:\n\s*|\s{2,})(?:show more show less|seniority level|similar jobs|people also viewed|similar searches)\b",
         description or "",
         maxsplit=1,
         flags=re.IGNORECASE,
@@ -75,130 +109,337 @@ def read_resume(path):
         return path.read_text(encoding="utf-8", errors="ignore")
     if suffix == ".docx":
         with zipfile.ZipFile(path) as archive:
-            source = archive.read("word/document.xml").decode("utf-8", errors="ignore")
-        return re.sub(r"<[^>]+>", " ", source)
+            document = ElementTree.fromstring(archive.read("word/document.xml"))
+        namespace = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+        return "\n".join("".join(node.itertext()) for node in document.findall(".//w:p", namespace))
     if suffix == ".pdf":
         try:
             from pypdf import PdfReader
+            from pypdf.errors import DependencyError, PyPdfError
         except ImportError as error:
             raise ValueError("PDF support requires: pip install pypdf") from error
-        return "\n".join(page.extract_text() or "" for page in PdfReader(path).pages)
+        try:
+            return "\n".join(page.extract_text() or "" for page in PdfReader(path).pages)
+        except (DependencyError, PyPdfError) as error:
+            raise ValueError("PDF text could not be extracted") from error
     raise ValueError("Supported formats: PDF, DOCX, TXT, MD")
 
 
 def detected_skills(text):
-    return {skill for skill in SKILLS
-            if re.search(r"(?<!\w)" + re.escape(skill) + r"(?!\w)", text, re.IGNORECASE)}
+    # React Native is a separate skill; it does not prove Web React experience.
+    text = re.sub(r"\breact\s+native\b", "react_native", text, flags=re.IGNORECASE)
+    found = {skill for skill in SKILLS
+             if any(re.search(r"(?<!\w)" + re.escape(alias) + r"(?!\w)", text, re.IGNORECASE)
+                    for alias in SKILL_ALIASES.get(skill, (skill,)))}
+    if "react_native" in text.casefold():
+        found.add("react native")
+    if "spring boot" in found:
+        found.discard("spring")
+    return found
 
 
 def job_sections(description):
-    # Headings may be adjacent to text when extracted from HTML textContent.
-    parts = re.split(
-        r"(nice to have|preferred qualifications|what we offer|benefits|"
-        r"what we.re looking for|requirements|qualifications|what you.ll do|the role)",
-        description, flags=re.IGNORECASE,
-    )
-    core, optional = [parts[0]], []
-    if len(parts) > 1:
-        # Company introductions are not job requirements.
-        core = [description.splitlines()[0]]
-        for heading, body in zip(parts[1::2], parts[2::2]):
-            if heading.casefold() in ("nice to have", "preferred qualifications"):
-                optional.append(body)
-            elif heading.casefold() not in ("what we offer", "benefits"):
-                core.append(body)
+    core, optional = [], []
+    for heading, body in _section_blocks(description):
+        if heading in _OPTIONAL:
+            optional.append(body)
+        elif heading not in _IGNORE:
+            for sentence in _sentences(body):
+                if re.search(r"\b(?:not required|not necessary|do not need)\b", sentence, re.I) and not re.search(r"\b(?:but|and|however)\b|;", sentence, re.I):
+                    continue
+                if re.search(r"\b(?:preferred|a plus|optional)\b", sentence, re.I):
+                    optional.append(sentence)
+                else:
+                    core.append(sentence)
     return "\n".join(core), "\n".join(optional)
 
 
-def local_recommendation(description, resumes):
-    description = core_job_description(description)
-    core, optional = job_sections(description)
-    job_text = core.casefold()
-    lines = description.splitlines()
-    job_title = lines[0] if lines else description
-    # Some postings use a generic title (for example, "Software Engineer")
-    # and state the actual track in the opening description. Include the
-    # opening section so a Full Stack/QA role is not matched to an unrelated
-    # resume merely because of generic skills such as Git or Python.
-    title_specializations = detected_specializations(job_title)
-    if not title_specializations or title_specializations == {"software"}:
-        # Generic software titles must not become Design/Data jobs because
-        # those words occur in company copy or routine engineering duties.
-        if "software" in title_specializations:
-            specific = detected_specializations(core) & {"full stack", "qa", "mobile"}
-            title_specializations = specific or {"software"}
-    job_skills = detected_skills(core)
-    optional_skills = detected_skills(optional) - job_skills
-    qualification_text = job_text.split("qualifications", 1)[-1]
-    required_skills = {
-        skill for skill in job_skills
-        if any(skill in detected_skills(sentence) and any(marker in sentence for marker in ("strong", "minimum", "required", "must"))
-               for sentence in re.split(r"[.\n]", qualification_text))
-    }
-    weights = {skill: (3 if skill in required_skills else .5 if skill in ("agile", "scrum", "git", "leadership") else 1) for skill in job_skills}
-    weights.update({skill: .25 for skill in optional_skills})
-    job_skills |= optional_skills
-    total_weight = sum(weights.values()) or 1
-    minimum_years_match = re.search(r"minimum\s+(\d+)\+?\s+years", job_text)
-    minimum_years = int(minimum_years_match.group(1)) if minimum_years_match else 0
-    ranked = []
-    for path, text in resumes:
-        resume_text = text.casefold()
-        overlap = sorted(job_skills & detected_skills(resume_text))
-        skill_ratio = sum(weights[skill] for skill in overlap) / total_weight
-        name = Path(path).stem.casefold()
-        resume_specializations = detected_specializations(name)
-        specialization_bonus = 0
-        if title_specializations:
-            # A clear role direction in the title must outweigh generic
-            # technology overlap. Otherwise a broad Full Stack resume can
-            # beat a QA resume simply by listing more shared tools.
-            compatible = title_specializations & resume_specializations
-            if title_specializations == {"software"}:
-                compatible = resume_specializations & {"software", "full stack", "java"}
-            specialization_bonus = 4 if compatible else -2 if resume_specializations else 0
-        ranked.append((skill_ratio * 10 + specialization_bonus, path, overlap, resume_text, skill_ratio))
-    ranked.sort(reverse=True, key=lambda item: item[0])
-    if not ranked:
-        return None
-    rank_score, path, overlap, resume_text, skill_ratio = ranked[0]
-    score = round(skill_ratio * 10, 1) if overlap else 0.0
-    missing_required = sorted(required_skills - set(overlap))
-    lacks_experience = bool(minimum_years and (
-        "intern" in resume_text and not re.search(rf"\b{minimum_years}\+?\s+years", resume_text)
-    ))
-    if lacks_experience:
-        score = min(score, 4.9)
-    if len(missing_required) >= 2:
-        score = min(score, 5.4)
-    recommendation = "Apply" if score >= 7 else "Consider" if score >= 5 else "Skip"
-    priority = "Tier 1 — Apply" if recommendation == "Apply" else "Tier 2 — Consider" if recommendation == "Consider" else "Tier 3 — Skip"
-    if lacks_experience:
-        summary = f"Requires {minimum_years}+ years excluding internships; the resume does not show that experience."
-    elif missing_required:
-        summary = "Missing required: " + ", ".join(missing_required[:4]) + "."
-    elif overlap:
-        summary = "Strong overlap in " + ", ".join(overlap[:4]) + "."
-    else:
-        summary = "The resume does not show the role's core skills."
+def _section_blocks(description):
+    parts = _HEADINGS.split(description)
+    return [("", parts[0])] + [(heading.casefold(), body)
+                               for heading, body in zip(parts[1::2], parts[2::2])]
+
+
+def _sentences(text):
+    # Preserve dots inside .NET, Next.js and version names.
+    return [sentence.strip(" \t\r•-*:") for sentence in
+            re.split(r"\n+|(?<=[.!?])\s+(?=[A-Z])", text) if sentence.strip()]
+
+
+def _role_evidence(text, duties_only=False):
+    evidence = {}
+    for sentence in _sentences(text):
+        # A collaboration target is not the work owned by this role.
+        owned = re.split(r"\b(?:collaborat\w*|partner\w*|work(?:ing) with)\b", sentence,
+                         maxsplit=1, flags=re.IGNORECASE)[0]
+        if duties_only and not _ACTION.search(owned):
+            continue
+        if duties_only and re.match(r"support\w*\s+(?:colleagues|teams|developers)", owned, re.I):
+            continue
+        roles = detected_specializations(owned) - {"software"}
+        if duties_only:
+            roles &= {"full stack", "frontend", "backend", "mobile", "qa"}
+        if _ACTION.search(owned):
+            if re.search(r"\b(?:web (?:interfaces|ui|screens)|frontend)\b", owned, re.I) or (
+                    "react" in detected_skills(owned) and re.search(r"\b(?:web|interfaces?|screens?|frontend)\b", owned, re.I)):
+                roles.add("frontend")
+            if re.search(r"\b(?:apis?|endpoints?|microservices|server-side|backend|(?:python|java|node) services)\b", owned, re.I):
+                roles.add("backend")
+            if re.search(r"\b(?:build|built|develop\w*|maintain\w*|creat\w*)\s+(?:\w+\s+){0,2}(?:automated tests|test automation|regression tests|api tests)\b", owned, re.I):
+                roles.add("qa")
+        # Routine design/data words are not career directions in engineering prose.
+        if _ACTION.search(owned) and "design" in roles and not re.search(r"\b(?:ux|ui|designer|user research|graphic design)\b", owned, re.I):
+            roles.discard("design")
+        if "data" in roles and not re.search(r"\b(?:data (?:analyst|scientist|engineer|analysis|pipelines)|analytics)\b", owned, re.I):
+            roles.discard("data")
+        for role in roles:
+            evidence.setdefault(role, []).append(sentence)
+    if {"frontend", "backend"} <= evidence.keys():
+        evidence.setdefault("full stack", evidence["frontend"] + evidence["backend"])
+    return evidence
+
+
+def _requirements(description):
+    required, optional = [], []
+    for heading, body in _section_blocks(description):
+        if heading in _IGNORE:
+            continue
+        for sentence in _sentences(body):
+            is_optional = heading in _OPTIONAL or bool(re.search(r"\b(?:preferred|nice to have|a plus|bonus|optional)\b", sentence, re.I))
+            is_required = heading in {"requirements", "qualifications", "must have", "what we’re looking for", "what we're looking for"} or bool(re.search(r"\b(?:required|must|strong|minimum|essential)\b", sentence, re.I))
+            skills = detected_skills(sentence)
+            if is_optional and re.search(r"\b(?:required|must|minimum|essential)\b", sentence, re.I) and not re.search(r"\b(?:not required|not necessary)\b", sentence, re.I):
+                required.append({"skills": sorted(skills), "source": sentence, "uncertain": True})
+                continue
+            if re.search(r"\b(?:not required|not necessary|no .*? required|do not need)\b", sentence, re.I):
+                if len(skills) > 1 and re.search(r"\b(?:but|and|however)\b|;", sentence, re.I):
+                    required.append({"skills": sorted(skills), "source": sentence, "uncertain": True})
+                continue
+            if not skills:
+                duration_only = bool(re.search(r"\b\d+\s*(?:\+|[-–]\s*\d+)?\s+years?\b", sentence, re.I)) and not re.search(
+                    r"\b(?:degree|bachelor|master|certificat\w*|licen[sc]e|authori[sz]ation|citizen\w*)\b", sentence, re.I)
+                if is_required and not is_optional and not duration_only:
+                    required.append({"skills": [], "source": sentence, "uncertain": True})
+                continue
+            # Only interpret simple coordinated alternatives. Mixed AND/OR clauses
+            # remain uncertain rather than inventing an incorrect requirement tree.
+            alternatives = bool(re.search(r"\b(?:or|either)\b", sentence, re.I))
+            mixed = alternatives and bool(re.search(r"\band\b|;|,", sentence, re.I))
+            residual = sentence
+            for skill in sorted(skills, key=len, reverse=True):
+                for alias in SKILL_ALIASES.get(skill, (skill,)):
+                    residual = re.sub(r"(?<!\w)" + re.escape(alias) + r"(?!\w)", " ", residual, flags=re.I)
+            prose_words = {"strong", "required", "minimum", "must", "experience", "proficiency", "proficient",
+                           "knowledge", "excellent", "solid", "good", "hands-on", "ability", "working",
+                           "build", "develop", "you", "the", "professional", "least", "years", "skills",
+                           "with", "using", "apis", "api", "web", "frontend", "backend", "full", "stack",
+                           "software", "development", "engineering"}
+            unknown_terms = [term for term in re.findall(r"\b[A-Z][A-Za-z0-9+#.-]{2,}\b", residual)
+                             if term.casefold() not in prose_words]
+            clauses = re.split(r"\band\b|[,;]", sentence, flags=re.I)
+            unknown_clause = len(clauses) > 1 and any(clause.strip() and not detected_skills(clause)
+                and not re.search(r"\b\d+\s*\+?\s+years?\b", clause, re.I) for clause in clauses)
+            if (mixed or unknown_terms or unknown_clause) and is_required and not is_optional:
+                required.append({"skills": sorted(skills), "source": sentence, "uncertain": True})
+                continue
+            groups = [skills] if alternatives else [{skill} for skill in sorted(skills)]
+            if is_optional:
+                optional.extend({"skills": sorted(group), "source": sentence} for group in groups)
+            elif is_required:
+                required.extend({"skills": sorted(group), "source": sentence, "uncertain": False} for group in groups)
+    return required, optional
+
+
+def job_profile(description, title=None):
+    cleaned = core_job_description(description)
+    if title is None:
+        lines = cleaned.splitlines()
+        title, cleaned = (lines[0], "\n".join(lines[1:])) if len(lines) > 1 else ("", cleaned)
+    core, optional = job_sections(cleaned)
+    title_roles = detected_specializations(title or "") - {"software"}
+    # Titles establish the principal direction. Duties supplement generic titles.
+    duties = _role_evidence(core, duties_only=True)
+    roles = title_roles or set(duties)
+    if "full stack" in roles:
+        roles -= {"frontend", "backend", "qa"}
+    elif "qa" in title_roles:
+        roles = {"qa"}
+    required, preferred = _requirements(cleaned)
+    experience_text = "\n".join(sentence for heading, body in _section_blocks(cleaned)
+                                if heading not in _IGNORE | _OPTIONAL
+                                for sentence in _sentences(body)
+                                if not re.match(r"(?:our |the company|we have|we bring)", sentence, re.I)
+                                and (heading in {"requirements", "qualifications", "must have"} or
+                                     re.search(r"\b(?:experience|minimum|at least)\b", sentence, re.I)))
+    year_statements = list(re.finditer(r"\b(?:(?:minimum(?: of)?|at least)\s+)?(\d+)\s*(?:\+|[-–]\s*\d+)?\s+years?\b", experience_text, re.I))
+    years = year_statements[0] if year_statements else None
+    numeric_years = int(years.group(1)) if years else None
+    experience_source = next((sentence for sentence in _sentences(experience_text) if years and years.group(0) in sentence), "")
+    if years and re.search(r"\b(?:preferred|nice to have|a plus|optional)\b", next((line for line in _sentences(core) if years.group(0) in line), ""), re.I):
+        numeric_years = None
+    unsupported_years = bool(re.search(r"\b(?:minimum|at least)\s+\w+\s+years\b", experience_text, re.I)) and not years
     return {
-        "file": Path(path).name,
-        "score": score,
-        "modification_needed": recommendation != "Skip" and score < 8,
-        "recommendation": recommendation,
-        "priority": priority,
-        "summary": summary,
-        "source": "Local match",
+        "title": title or "", "description": cleaned, "core": core,
+        "roles": sorted(roles), "role_evidence": duties,
+        "skills": sorted(detected_skills(core)), "optional_skills": sorted(detected_skills(optional)),
+        "required": required, "preferred": preferred, "minimum_years": numeric_years,
+        "experience_skills": sorted(detected_skills(experience_source)),
+        "experience_roles": sorted(detected_specializations(experience_source) - {"software"}),
+        "experience_uncertain": unsupported_years or len(year_statements) > 1,
+        "input_ready": bool(core.strip() and _ACTION.search(core) and
+                            (detected_skills(core) or duties)),
     }
 
 
-def recommend(description, paths, model=None):
+def resume_profile(text, roles=()):
+    owned_sentences = [sentence for sentence in _sentences(text) if not re.search(
+        r"\b(?:not|never|no experience|want to|would like|looking for|seeking|"
+        r"learning|interested in|will build|will develop|requirements|must|required)\b", sentence, re.I)]
+    evidence = _role_evidence("\n".join(owned_sentences))
+    skills = detected_skills(text)
+    project_skills = {}
+    for sentence in owned_sentences:
+        if _ACTION.search(sentence):
+            for skill in detected_skills(sentence):
+                project_skills.setdefault(skill, []).append(sentence)
+    # Explicit professional-duration statements only. Dates and internships are
+    # not guessed into a total, and a numeric mismatch is not a proof of inability.
+    years = re.search(r"\b(\d+)\+?\s+years?\s+(?:(?:of\s+)?(?:professional|commercial|industry)\s+experience)(?:\s+(?:in|with|using)\s+[^.\n]+)?", "\n".join(owned_sentences), re.I)
+    return {"roles": sorted(evidence), "confirmed_roles": sorted(set(roles) & set(ROLE_LABELS)),
+            "role_evidence": evidence, "skills": sorted(skills),
+            "project_skills": project_skills, "professional_years": int(years.group(1)) if years else None,
+            "experience_skills": sorted(detected_skills(years.group(0))) if years else [],
+            "experience_roles": sorted(detected_specializations(years.group(0)) - {"software"}) if years else []}
+
+
+def local_recommendation(description, resumes, job_title=None, resume_profiles=None):
+    job = job_profile(description, job_title)
+    job_roles = set(job["roles"])
+    generic = {"agile", "scrum", "git", "leadership", "communication"}
+    core_skills = set(job["skills"]) - generic
+    alternative_groups = [set(item["skills"]) for item in job["required"]
+                          if not item["uncertain"] and len(item["skills"]) > 1]
+    for sentence in _sentences(job["core"]):
+        if re.search(r"\bor\b", sentence, re.I) and not re.search(r"\band\b|;|,", sentence, re.I):
+            group = detected_skills(sentence) & core_skills
+            if len(group) > 1:
+                alternative_groups.append(group)
+    alternative_skills = set().union(*alternative_groups) if alternative_groups else set()
+    core_groups = [set(group) for group in sorted({tuple(sorted(group)) for group in alternative_groups})]
+    core_groups += [{skill} for skill in sorted(core_skills - alternative_skills)]
+    profiles, candidates = resume_profiles or {}, []
+    for path, text in resumes:
+        metadata = profiles.get(str(path), {})
+        profile = resume_profile(text, metadata.get("roles", ()))
+        skills, evidence = set(profile["skills"]), profile["project_skills"]
+        role_sources = [source for role in job_roles for source in profile["role_evidence"].get(role, [])]
+        grounded_role = any(_ACTION.search(source) for source in role_sources)
+        content_compatible = bool(job_roles & set(profile["roles"]))
+        confirmed = set(profile["confirmed_roles"])
+        label_conflict = bool(confirmed and job_roles and not (confirmed & job_roles))
+        compatibility = (2 if content_compatible else 1 if job_roles & confirmed else
+                         -1 if job_roles and profile["roles"] else 0)
+        requirements, missing, uncertain = [], [], []
+        for requirement in job["required"]:
+            group = set(requirement["skills"])
+            label = requirement["source"] if requirement["uncertain"] else " or ".join(sorted(group))
+            status = ("uncertain" if requirement["uncertain"] else
+                      "project evidence" if group & evidence.keys() else
+                      "listed only" if group & skills else "not evidenced")
+            requirements.append({**requirement, "status": status})
+            if status == "not evidenced":
+                missing.append(label)
+            elif status in {"uncertain", "listed only"}:
+                uncertain.append(label)
+        years = job["minimum_years"]
+        experience_verified = years is None or (
+            profile["professional_years"] is not None and profile["professional_years"] >= years and
+            set(job["experience_skills"]) <= set(profile["experience_skills"]) and
+            set(job["experience_roles"]) <= set(profile["experience_roles"]))
+        gaps = ["No resume evidence found for: " + item for item in missing]
+        gaps += ["Verify requirement: " + item for item in uncertain]
+        if not experience_verified or job["experience_uncertain"]:
+            gaps.append(f"Professional experience not verified (JD: {years}+ years)." if years else
+                        "The JD experience requirement needs manual review.")
+        if label_conflict:
+            gaps.append("Confirmed direction differs from the JD; review the resume's project evidence.")
+        if not job_roles:
+            gaps.append("The JD's principal direction needs manual review.")
+        elif len(job_roles) > 1:
+            gaps.append("The JD contains multiple principal directions; verify the responsibilities before choosing.")
+        elif not grounded_role:
+            gaps.append("No delivery evidence establishing the JD's direction was found.")
+        unevidenced_core = [" or ".join(sorted(group)) for group in core_groups if not group & evidence.keys()]
+        if unevidenced_core:
+            gaps.append("Core skills without project evidence: " + ", ".join(unevidenced_core))
+        project_overlap = sorted(core_skills & evidence.keys())
+        overlap = sorted(core_skills & skills)
+        ratio = sum(bool(group & skills) for group in core_groups) / max(len(core_groups), 1)
+        project_ratio = sum(bool(group & evidence.keys()) for group in core_groups) / max(len(core_groups), 1)
+        required_ratio = sum(item["status"] == "project evidence" for item in requirements) / max(len(requirements), 1)
+        if not requirements:
+            required_ratio = project_ratio
+        eligible = bool(job["input_ready"] and job_roles and grounded_role and
+                        not gaps and core_groups and all(group & evidence.keys() for group in core_groups))
+        optional_matches = sorted(set(job["optional_skills"]) & skills)
+        candidate = {
+            "path": str(path), "file": Path(path).name, "name": metadata.get("name", Path(path).stem),
+            "roles": profile["roles"], "confirmed_roles": profile["confirmed_roles"],
+            "compatibility": compatibility, "eligible": eligible,
+            "overlap": overlap, "project_overlap": project_overlap,
+            "requirements": requirements, "gaps": gaps, "optional_matches": optional_matches,
+            "evidence": list(dict.fromkeys(role_sources + [source for skill in project_overlap
+                            for source in evidence[skill]]))[:6],
+            "score": round(ratio * 10, 1),
+            "rank": (compatibility, int(eligible), required_ratio, project_ratio, ratio, len(optional_matches)),
+        }
+        candidates.append(candidate)
+    if not candidates:
+        return None
+    candidates.sort(key=lambda item: item["rank"], reverse=True)
+    best = candidates[0]
+    viable = [candidate for candidate in candidates if candidate["compatibility"] >= 0 and candidate["overlap"]]
+    # A close comparison cannot be resolved by input order or optional tool counts.
+    close = len(viable) > 1 and viable[0]["rank"][:2] == viable[1]["rank"][:2] and all(
+        abs(a - b) < .1 for a, b in zip(viable[0]["rank"][2:5], viable[1]["rank"][2:5]))
+    if not job["input_ready"] or not core_groups:
+        state, summary = "insufficient", "Add the full JD with responsibilities and requirements before choosing a resume."
+    elif not viable:
+        state, summary = "none", "No suitable role evidence found among the readable resumes."
+    elif close:
+        state, summary = "close", "Two resumes have similar evidence; review their responsibilities before choosing."
+    elif best["eligible"]:
+        state, summary = "recommended", "The resume shows the role's responsibilities and core skills. Verify any qualifications not assessed locally."
+    else:
+        state, summary = "provisional", "The leading resume needs verification; the available evidence does not support a clear recommendation."
+    recommendation = "Apply" if state == "recommended" else "Skip" if state in {"none", "insufficient"} else "Consider"
+    return {
+        "file": best["file"] if state not in {"none", "insufficient"} else None,
+        "name": best["name"] if state not in {"none", "insufficient"} else None,
+        "score": best["score"], "state": state, "job": job, "candidates": candidates,
+        "alternatives": [candidate["name"] for candidate in viable[:2]] if close else [],
+        "modification_needed": state == "provisional", "recommendation": recommendation,
+        "priority": "Review locally" if state != "recommended" else "Resume evidence supported",
+        "summary": summary, "source": "Local match",
+    }
+
+
+def recommend(description, paths, model=None, job_title=None, resume_profiles=None):
     readable, errors = [], []
-    for path in paths:
+    for path in dict.fromkeys(paths):
         try:
             text = read_resume(path)
             if text.strip():
                 readable.append((path, text))
-        except (OSError, ValueError, zipfile.BadZipFile) as error:
-            errors.append(f"{Path(path).name}: {error}")
-    return (local_recommendation(description, readable) if readable else None), errors
+            else:
+                errors.append(f"{Path(path).name}: no extractable text; use a text-based PDF, DOCX or TXT.")
+        except (OSError, ValueError, zipfile.BadZipFile, KeyError, ElementTree.ParseError) as error:
+            errors.append(f"{Path(path).name}: could not read resume ({type(error).__name__}).")
+    result = local_recommendation(description, readable, job_title, resume_profiles) if readable else None
+    if result:
+        result["readable_count"], result["requested_count"] = len(readable), len(set(paths))
+        result["errors"] = errors
+        if errors and result["state"] == "recommended":
+            result["state"], result["recommendation"] = "provisional", "Consider"
+            result["summary"] = "Comparison is incomplete: one or more resumes could not be read."
+    return result, errors

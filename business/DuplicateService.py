@@ -117,9 +117,17 @@ def parse_posting(url, source):
         node = nodes[0]
         company = node.get('hiringOrganization') or {}
         company = company.get('name', '') if isinstance(company, dict) else str(company)
-        description = html.unescape(re.sub('<[^>]+>', ' ', str(node.get('description', ''))))
+        description = posting_description(str(node.get('description', '')))
         return Posting(url, company, str(node.get('title', '')), description)
     return Posting(url, warning='This page could not be parsed automatically.')
+
+
+def posting_description(source):
+    """Keep block boundaries for section and evidence matching."""
+    source = re.sub(r'<(?:script|style)\b[^>]*>.*?</(?:script|style)>', '', source, flags=re.I | re.S)
+    source = re.sub(r'</?(?:p|div|li|br|h[1-6]|ul|ol|section)\b[^>]*>', '\n', source, flags=re.I)
+    text = html.unescape(re.sub('<[^>]+>', ' ', source))
+    return '\n'.join(' '.join(line.split()) for line in text.splitlines() if line.strip())
 
 
 def _fetch_direct(url):
@@ -214,7 +222,7 @@ def _fetch_with_browser(url):
             lambda active: active.execute_script('return document.readyState') == 'complete'
         )
         posting = parse_posting(url, driver.page_source)
-        if posting.position:
+        if posting.position and posting.description:
             return posting
 
         def text_from(selectors):
@@ -230,11 +238,11 @@ def _fetch_with_browser(url):
                 if not elements:
                     continue
                 value = driver.execute_script(
-                    "return arguments[0].textContent || '';",
+                    "return arguments[0].innerHTML || '';",
                     elements[0],
                 )
                 if value and value.strip():
-                    return value.strip()
+                    return posting_description(value)
             return ''
 
         position = text_from((
@@ -261,8 +269,8 @@ def _fetch_with_browser(url):
             '.jobs-box__html-content',
             '[class*="job-description"]',
         ))
-        if position and description:
-            return Posting(url, company, position, description)
+        if description and (position or posting.position):
+            return Posting(url, company or posting.company, position or posting.position, description)
         return posting
     finally:
         driver.quit()
@@ -272,13 +280,13 @@ def fetch_posting(url):
     canonical_url(url)
     try:
         posting = _fetch_direct(url)
-        if posting.position:
+        if posting.position and posting.description:
             return posting
     except requests.RequestException:
         posting = None
     try:
         browser_posting = _fetch_with_browser(url)
-        if browser_posting.position:
+        if browser_posting.position and browser_posting.description:
             return browser_posting
     except Exception:
         pass
@@ -290,7 +298,7 @@ class DuplicateService:
         self.conn = conn
 
     def search(self, posting):
-        target = canonical_url(posting.url)
+        target = canonical_url(posting.url) if posting.url else None
         rows = self.conn.execute('''
             SELECT application_key, company, position, created_date, status, subject, body_preview
             FROM jobs ORDER BY created_date DESC

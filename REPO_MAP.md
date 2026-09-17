@@ -23,11 +23,14 @@ User selects Sync Gmail
         -> EmailClassifier + EmailParser
         -> DataAccess writes jobs, evidence, and sync metadata
         -> Workbench refreshes the funnel
+        -> Workbench refreshes current posting history without reassessing resumes
 
-While JobTrack remains open
-    -> Workbench schedules the same Gmail sync at Toronto midnight
+After the desktop UI opens
+    -> one background Gmail sync when token.json already exists
+    -> noninteractive OAuth reuse/refresh; reconnect through Sync Gmail if needed
+    -> no recurring daily timer
 
-User pastes a public job URL
+User pastes a public job URL (or supplies a JD directly)
     -> DuplicateService.fetch_posting()
         -> direct HTTP request
         -> Selenium browser fallback when needed
@@ -36,7 +39,9 @@ User pastes a public job URL
         -> all local application history and saved evidence
     -> ResumeAdvisor.recommend()
         -> reads enabled local resume files
-        -> performs local deterministic matching
+        -> separates duties, technologies, requirement groups, and experience
+        -> compares each resume's content evidence and confirmed directions
+        -> returns supported, provisional, close, no-fit, or insufficient results
     -> Workbench presents history and recommendation
 ```
 
@@ -71,7 +76,7 @@ No packaging configuration, Makefile, or CI workflow is currently tracked.
 - `posting_snapshots`: job URL/company/title/description snapshots used for repost matching.
 - `resumes`: display names, local file paths, enabled state, and update dates; resume contents are not copied into the database.
 - `sync_metadata`, `gmail_scan_progress`, and `evidence_metadata`: incremental/rebuild synchronization state.
-- `app_settings`: local key/value application settings.
+- `app_settings`: local key/value application settings, including confirmed resume directions under `resume_roles_<id>`; directions survive renaming and are removed with the saved reference.
 
 Database changes must remain backward compatible because schema upgrades run against a user's existing local `tracker.db`. Add or reuse migration logic in `DataAccess.create_tables()` and test idempotency.
 
@@ -128,6 +133,9 @@ venv/bin/python3 -m compileall -q business gmail objects parsers persistence vis
 - Duplicate detection intentionally searches all history even when the chart is date-filtered; do not couple these scopes.
 - URL fetching includes SSRF defenses, redirect limits, response-size limits, and browser fallback. Preserve those controls when changing parsing.
 - Tkinter must be updated on the UI thread. Background work reports results through `Workbench.events` and `poll()`.
+- Job and resume result events carry separate generation numbers so an old result cannot overwrite a new check or updated resume selection, including repeated checks of the same URL.
+- The desktop uses a fixed two-column work area: Job check / Resume choice on the left and Application history / Resumes / Application overview on the right. Long content scrolls only inside a panel, never as a whole page.
+- Local assessment is an English deterministic evidence aid, not a calibrated confidence or eligibility model. Unsupported requirements, missing experience evidence and incomplete comparisons must remain visible; confirmed labels do not replace delivery evidence.
 - Browser automation varies by OS and installed browsers; do not require Chrome specifically.
 - `JobTrack.pyw` sets the repository root as the working directory, so direct `main.py` execution from another directory is not equivalent.
 - The repository declares Python 3.11+ and requires a Python build with Tk support.

@@ -113,6 +113,40 @@ class DuplicateTests(unittest.TestCase):
         self.assertIn('Work & build', result.description)
         self.assertTrue(parse_posting('https://example.com/job', '<title>Sign in</title>').warning)
 
+    def test_structured_description_retains_sections_and_related_job_boundary(self):
+        from business.ResumeAdvisor import job_profile
+        node = {'@type': 'JobPosting', 'title': 'Full Stack Developer',
+                'description': '<h2>Responsibilities</h2><p>Build React web interfaces and Python APIs.</p>'
+                               '<h2>Requirements</h2><ul><li>SQL required.</li></ul>'
+                               '<h2>Similar jobs</h2><p>Mobile Flutter Java jobs.</p>'}
+        posting = parse_posting('https://example.com/job', '<script type="application/ld+json">'+json.dumps(node)+'</script>')
+        self.assertIn('\nRequirements\n', posting.description)
+        profile = job_profile(posting.description, posting.position)
+        self.assertNotIn('flutter', profile['skills'])
+        self.assertIn('sql', profile['skills'])
+
+    def test_title_without_description_uses_browser_fallback(self):
+        url = 'https://example.com/job'
+        full = Posting(url, 'Acme', 'Full Stack Developer', 'Build React web interfaces and Python APIs.')
+        with patch('business.DuplicateService._fetch_direct', return_value=Posting(url, 'Acme', 'Full Stack Developer')), \
+                patch('business.DuplicateService._fetch_with_browser', return_value=full) as browser:
+            self.assertEqual(fetch_posting(url), full)
+            browser.assert_called_once_with(url)
+
+    def test_pasted_description_history_uses_company_and_title(self):
+        matches = self.service.search(Posting('', 'Acme', 'Software Engineer', 'Build software'))
+        self.assertEqual(matches[0]['score'], 80)
+
+    def test_resume_direction_metadata_is_removed_with_reference(self):
+        self.db.add_resume('Sample', 'C:/fictional/sample.txt')
+        resume_id = self.db.get_resumes()[0][0]
+        key = f'resume_roles_{resume_id}'
+        self.db.set_setting(key, '["backend"]')
+        self.db.update_resume(resume_id, name='Renamed')
+        self.assertEqual(self.db.get_setting(key), '["backend"]')
+        self.db.delete_resume(resume_id)
+        self.assertIsNone(self.db.get_setting(key))
+
     def test_blocked_job_board_uses_browser_fallback(self):
         url = 'https://ca.indeed.com/viewjob?jk=abc123'
         browser_result = Posting(url, 'Acme', 'Engineer', 'Build software')
