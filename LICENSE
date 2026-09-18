@@ -1,16 +1,33 @@
-MIT License
+JobTrack Proprietary Source-Available Notice
 
 Copyright (c) 2026 Pengyu Wang
+All rights reserved.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+The source code and accompanying documentation (the "Software") are made
+publicly visible for inspection only. Public availability does not make the
+Software open source or grant a general license to use it.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+Except as provided below, no permission is granted to execute, copy, modify,
+merge, create derivative works of, distribute, sublicense, sell, or otherwise
+use the Software, whether for commercial or non-commercial purposes, without
+prior written authorization from the copyright holder. This includes use in
+commercial products, hosted services, paid services, and internal business
+operations. The copyright holder retains the right to use, develop, and
+commercially license their own Software.
+
+This notice does not restrict rights available under applicable law or rights
+granted under the applicable hosting platform's terms of service, including
+GitHub's rights for users to view and fork public repositories through its
+service. It does not grant additional rights beyond those terms.
+
+This notice does not revoke, narrow, or replace permissions already granted
+under the MIT License for previously released code or documentation. Material
+previously licensed under MIT remains available under that license; this
+notice applies only to rights not already granted under a prior license.
+
+Third-party software and materials remain subject to their respective
+licenses. This notice does not replace their license terms or copyright
+notices, nor does it claim ownership of third-party contributions.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
