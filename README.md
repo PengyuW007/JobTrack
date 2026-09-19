@@ -4,6 +4,21 @@ JobTrack is a private desktop workspace for reviewing job opportunities and trac
 
 The English desktop interface keeps Job check, Application history, and Resume choice on the left, with Resumes and Application overview on the right. The window does not scroll as a page; long descriptions, evidence, and tables can scroll within their own panels.
 
+## License and access
+
+JobTrack is proprietary, source-visible software, not an open-source project.
+Its source is publicly visible for inspection, but no additional permission
+to run, modify, redistribute, or use it commercially or non-commercially is
+granted without prior written authorization from Pengyu Wang. See [LICENSE](LICENSE)
+for the full notice and its exceptions. The installation and usage instructions
+below are for the copyright holder and separately authorized users; they do not
+grant usage rights.
+
+Permissions already granted for previously MIT-licensed material remain in
+effect. Third-party dependencies retain their own licenses. Rights granted by
+GitHub's terms for public repositories, including viewing and forking through
+the service, are not restricted by this notice.
+
 ## Start here
 
 JobTrack is currently a source-code download, not a one-click installer. If you are unfamiliar with Python, use an AI assistant as an installation guide:
