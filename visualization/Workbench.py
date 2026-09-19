@@ -534,8 +534,8 @@ class Workbench:
         candidates = list(result["candidates"])
         alternatives = set(result.get("alternatives", []))
         for index, candidate in enumerate(candidates):
-            roles = candidate.get("roles") or candidate.get("confirmed_roles") or []
-            role = self._role_summary(roles)
+            primary = candidate.get("primary_direction")
+            role = self._role_summary([primary]) if primary else "Direction unclear"
             evidence = " · ".join(skill.title() for skill in candidate.get("project_overlap", [])) or "No project evidence"
             gaps = candidate.get("gaps", [])
             if gaps:

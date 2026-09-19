@@ -22,8 +22,8 @@ Love for data - Our platform provides data intelligence.'''
         self.assertEqual(result['state'], 'skip')
         self.assertEqual(result['recommendation'], 'Skip')
         self.assertIsNone(result['file'])
-        self.assertIsNone(result['closest_resume'])
-        self.assertEqual(result['closest_resumes'], ['A', 'B'])
+        self.assertEqual(result['closest_resume'], 'A')
+        self.assertEqual(result['closest_resumes'], ['A'])
         self.assertIn('c#', result['summary'])
         self.assertFalse(any('Friendly' in item['source'] or 'Love for data' in item['source']
                              for item in result['job']['required']))

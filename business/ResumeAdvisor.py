@@ -330,8 +330,28 @@ def resume_profile(text, roles=()):
     # Explicit professional-duration statements only. Dates and internships are
     # not guessed into a total, and a numeric mismatch is not a proof of inability.
     years = re.search(r"\b(\d+)\+?\s+years?\s+(?:(?:of\s+)?(?:professional|commercial|industry)\s+experience)(?:\s+(?:in|with|using)\s+[^.\n]+)?", "\n".join(owned_sentences), re.I)
+    direction_scores = {role: len(set(sources)) for role, sources in evidence.items()}
+    # Full-stack focus requires direct full-stack ownership or meaningful work
+    # on both sides. Merely having one frontend task in a backend/mobile resume
+    # remains secondary evidence.
+    if "full stack" in evidence:
+        direct = sum("full stack" in detected_specializations(source)
+                     for source in set(evidence["full stack"]))
+        balanced = min(direction_scores.get("frontend", 0), direction_scores.get("backend", 0))
+        direction_scores["full stack"] = direct * 2 + balanced
+    strongest = max(direction_scores.values(), default=0)
+    strongest_roles = sorted(role for role, score in direction_scores.items() if score == strongest)
+    if "full stack" in strongest_roles and set(strongest_roles) <= {"full stack", "frontend", "backend"}:
+        primary_direction = "full stack"
+    else:
+        primary_direction = strongest_roles[0] if len(strongest_roles) == 1 else None
+    secondary_directions = sorted(role for role, score in direction_scores.items()
+                                  if score and role != primary_direction)
     return {"roles": sorted(evidence), "confirmed_roles": sorted(set(roles) & set(ROLE_LABELS)),
             "role_evidence": evidence, "skills": sorted(skills),
+            "primary_direction": primary_direction,
+            "secondary_directions": secondary_directions,
+            "direction_scores": direction_scores,
             "project_skills": project_skills, "professional_years": int(years.group(1)) if years else None,
             "experience_skills": sorted(detected_skills(years.group(0))) if years else [],
             "experience_roles": sorted(detected_specializations(years.group(0)) - {"software"}) if years else []}
@@ -365,6 +385,15 @@ def local_recommendation(description, resumes, job_title=None, resume_profiles=N
                                  for source in profile["role_evidence"].get(role, []))}
         role_coverage = len(grounded_roles) / max(len(job_roles), 1)
         confirmed = set(profile["confirmed_roles"])
+        primary = profile["primary_direction"]
+        adjacent = {
+            "full stack": {"frontend", "backend"},
+            "frontend": {"full stack"},
+            "backend": {"full stack"},
+        }
+        direction_fit = (3 if primary in job_roles else
+                         2 if primary and any(primary in adjacent.get(role, set()) for role in job_roles) else
+                         1 if job_roles & set(profile["secondary_directions"]) else 0)
         label_conflict = bool(confirmed and job_roles and not (confirmed & job_roles))
         compatibility = (2 if content_compatible else 1 if job_roles & confirmed else
                          -1 if job_roles and profile["roles"] else 0)
@@ -414,6 +443,9 @@ def local_recommendation(description, resumes, job_title=None, resume_profiles=N
         candidate = {
             "path": str(path), "file": Path(path).name, "name": metadata.get("name", Path(path).stem),
             "roles": profile["roles"], "confirmed_roles": profile["confirmed_roles"],
+            "primary_direction": primary,
+            "secondary_directions": profile["secondary_directions"],
+            "direction_fit": direction_fit,
             "compatibility": compatibility, "eligible": eligible,
             "overlap": overlap, "project_overlap": project_overlap,
             "requirements": requirements, "gaps": gaps, "optional_matches": optional_matches,
@@ -423,7 +455,7 @@ def local_recommendation(description, resumes, job_title=None, resume_profiles=N
             "project_match_ratio": project_ratio,
             "required_match_ratio": required_ratio,
             "role_coverage": role_coverage,
-            "rank": (compatibility, role_coverage, int(eligible), required_ratio, project_ratio, ratio,
+            "rank": (direction_fit, compatibility, role_coverage, int(eligible), required_ratio, project_ratio, ratio,
                      sum(bool(set(item["skills"]) & skills) for item in job["preferred"])),
         }
         candidates.append(candidate)
@@ -437,8 +469,8 @@ def local_recommendation(description, resumes, job_title=None, resume_profiles=N
     top_ties = [candidate for candidate in candidates if candidate["rank"] == best["rank"]]
     viable = [candidate for candidate in candidates if candidate["compatibility"] >= 0 and candidate["overlap"]]
     # A close comparison cannot be resolved by input order or optional tool counts.
-    close = len(viable) > 1 and viable[0]["rank"][:3] == viable[1]["rank"][:3] and all(
-        abs(a - b) < .1 for a, b in zip(viable[0]["rank"][3:6], viable[1]["rank"][3:6]))
+    close = len(viable) > 1 and viable[0]["rank"][:4] == viable[1]["rank"][:4] and all(
+        abs(a - b) < .1 for a, b in zip(viable[0]["rank"][4:7], viable[1]["rank"][4:7]))
     if not job["input_ready"] or not core_groups:
         state, summary = "insufficient", "Add the full JD with responsibilities and requirements before choosing a resume."
     elif not viable:
