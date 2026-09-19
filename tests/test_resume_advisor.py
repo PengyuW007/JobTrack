@@ -8,6 +8,29 @@ from visualization.Workbench import format_assessment
 
 
 class ResumeAdvisorTests(unittest.TestCase):
+    def test_missing_csharp_does_not_recommend_mobile_with_web_projects(self):
+        jd = '''Full Stack Engineer
+Responsibilities
+Build full-stack applications using C# and SQL.
+What you can bring
+Experienced C# developer.
+Friendly - You will be working with people!
+Love for data - Our platform provides data intelligence.'''
+        result = local_recommendation(jd, [
+            ('A.txt', 'Built full-stack web applications using Python SQL.'),
+            ('B.txt', 'Built mobile apps. Built React web interfaces and Python backend APIs using SQL Linux AWS.')])
+        self.assertEqual(result['state'], 'skip')
+        self.assertEqual(result['recommendation'], 'Skip')
+        self.assertIsNone(result['file'])
+        self.assertIsNone(result['closest_resume'])
+        self.assertEqual(result['closest_resumes'], ['A', 'B'])
+        self.assertIn('c#', result['summary'])
+        self.assertFalse(any('Friendly' in item['source'] or 'Love for data' in item['source']
+                             for item in result['job']['required']))
+        self.assertNotIn('Recommended resume', format_assessment(result))
+        result = local_recommendation(jd, [('C.txt', 'Built full-stack applications using C# SQL.')])
+        self.assertEqual(result['state'], 'recommended')
+
     def test_connector_duties_are_not_qa_background_or_sales_collaboration(self):
         jd = '''Customer Support Developer
 Responsibilities
@@ -168,7 +191,8 @@ Candidates must be legally eligible to work in Canada.'''
                    ('FullStack.txt', 'Built full-stack web features using JavaScript TypeScript SQL.'),
                    ('QA.txt', 'SQL test automation')]
         result = local_recommendation(job, resumes)
-        self.assertEqual(result['file'], 'FullStack.txt')
+        self.assertEqual(result['candidates'][0]['file'], 'FullStack.txt')
+        self.assertEqual(result['state'], 'skip')  # No .NET evidence in any resume.
         self.assertLess(result['score'], 8)
 
     def test_direction_changes_ranking_without_inflating_score(self):
@@ -188,7 +212,7 @@ Candidates must be legally eligible to work in Canada.'''
             'modification_needed': False, 'recommendation': 'Skip',
             'summary': 'Missing required experience.', 'source': 'Local match'
         })
-        self.assertIn('Recommended resume: FullStack.pdf', output)
+        self.assertIn('Resume to review: FullStack.pdf', output)
         self.assertNotIn('Modify:', output)
         self.assertNotIn('Priority:', output)
         self.assertIn('Missing required experience.', output)
@@ -220,8 +244,9 @@ Candidates must be legally eligible to work in Canada.'''
             Qualifications: Minimum 4+ years professional experience excluding internship.
             Strong React and TypeScript. Strong C# and .NET experience.'''
             result, _ = recommend(job, [full_stack, java], 'local')
-            self.assertEqual(result['file'], 'FullStack_Resume.pdf.txt')
-            self.assertEqual(result['state'], 'provisional')
+            self.assertEqual(result['candidates'][0]['file'], 'FullStack_Resume.pdf.txt')
+            self.assertIsNone(result['file'])
+            self.assertEqual(result['state'], 'skip')
             self.assertNotEqual(result['recommendation'], 'Apply')
             self.assertTrue(any('experience not verified' in gap for gap in result['candidates'][0]['gaps']))
 
@@ -380,7 +405,29 @@ Candidates must be legally eligible to work in Canada.'''
     def test_confirmed_label_without_project_evidence_is_not_enough(self):
         result = local_recommendation('Full Stack Developer\nBuild React web interfaces and Python APIs.',
                                       [('R.txt', 'React Python')], resume_profiles={'R.txt': {'roles': ['full stack']}})
-        self.assertEqual(result['state'], 'provisional')
+        self.assertEqual(result['state'], 'skip')
+
+    def test_very_low_project_match_is_a_skip(self):
+        result = local_recommendation(
+            'Backend Developer\nBuild Python Java SQL AWS Docker backend APIs.',
+            [('R.txt', 'Built backend APIs using Python.')])
+        self.assertEqual(result['state'], 'skip')
+        self.assertEqual(result['recommendation'], 'Skip')
+        self.assertIsNone(result['file'])
+        self.assertEqual(result['closest_resume'], 'R')
+
+    def test_exact_skip_ties_are_order_independent_and_share_one_tier(self):
+        job = 'Full Stack Developer\nBuild C# SQL full-stack applications.\nRequirements\nC# required.'
+        resumes = [('Mobile.txt', 'Built React web interfaces and Python backend APIs using SQL.'),
+                   ('FullStack.txt', 'Built React web interfaces and Python backend APIs using SQL.')]
+        expected = ['FullStack', 'Mobile']
+        for order in (resumes, list(reversed(resumes))):
+            result = local_recommendation(job, order)
+            self.assertEqual(result['state'], 'skip')
+            self.assertEqual(result['closest_resumes'], expected)
+            self.assertIsNone(result['closest_resume'])
+            output = format_assessment(result)
+            self.assertIn('Closest resumes — tied (reference only): FullStack / Mobile', output)
 
     def test_unreadable_and_empty_resumes_are_reported(self):
         with tempfile.TemporaryDirectory() as folder:

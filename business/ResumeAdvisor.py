@@ -229,6 +229,8 @@ def _requirements(description):
                     required.append({"skills": sorted(skills), "source": sentence, "uncertain": True})
                 continue
             if not skills:
+                if re.match(r"(?:friendly\b|love for data\b)", sentence, re.I):
+                    continue
                 duration_only = bool(re.search(r"\b\d+\s*(?:\+|[-–]\s*\d+)?\s+years?\b", sentence, re.I)) and not re.search(
                     r"\b(?:degree|bachelor|master|certificat\w*|licen[sc]e|authori[sz]ation|citizen\w*)\b", sentence, re.I)
                 if is_required and not is_optional and not duration_only:
@@ -248,7 +250,7 @@ def _requirements(description):
                            "knowledge", "excellent", "solid", "good", "hands-on", "ability", "working",
                            "build", "develop", "you", "the", "professional", "least", "years", "skills",
                            "with", "using", "apis", "api", "web", "frontend", "backend", "full", "stack",
-                           "software", "development", "engineering"}
+                           "software", "development", "engineering", "experienced", "be"}
             unknown_terms = [term for term in re.findall(r"\b[A-Z][A-Za-z0-9+#.-]{2,}\b", residual)
                              if term.casefold() not in prose_words]
             clauses = re.split(r"\band\b|[,;]", sentence, flags=re.I)
@@ -418,6 +420,8 @@ def local_recommendation(description, resumes, job_title=None, resume_profiles=N
             "evidence": list(dict.fromkeys(role_sources + [source for skill in project_overlap
                             for source in evidence[skill]]))[:6],
             "score": round(ratio * 10, 1),
+            "project_match_ratio": project_ratio,
+            "required_match_ratio": required_ratio,
             "role_coverage": role_coverage,
             "rank": (compatibility, role_coverage, int(eligible), required_ratio, project_ratio, ratio,
                      sum(bool(set(item["skills"]) & skills) for item in job["preferred"])),
@@ -425,8 +429,12 @@ def local_recommendation(description, resumes, job_title=None, resume_profiles=N
         candidates.append(candidate)
     if not candidates:
         return None
+    # Names stabilize presentation only. Evidence rank remains the sole basis
+    # for matching, and exact ties stay in the same tier.
+    candidates.sort(key=lambda item: item["name"].casefold())
     candidates.sort(key=lambda item: item["rank"], reverse=True)
     best = candidates[0]
+    top_ties = [candidate for candidate in candidates if candidate["rank"] == best["rank"]]
     viable = [candidate for candidate in candidates if candidate["compatibility"] >= 0 and candidate["overlap"]]
     # A close comparison cannot be resolved by input order or optional tool counts.
     close = len(viable) > 1 and viable[0]["rank"][:3] == viable[1]["rank"][:3] and all(
@@ -441,10 +449,24 @@ def local_recommendation(description, resumes, job_title=None, resume_profiles=N
         state, summary = "recommended", "The resume shows the role's responsibilities and core skills. Verify any qualifications not assessed locally."
     else:
         state, summary = "provisional", "The leading resume needs verification; the available evidence does not support a clear recommendation."
-    recommendation = "Apply" if state == "recommended" else "Skip" if state in {"none", "insufficient"} else "Consider"
+    unsupported_required = [" or ".join(item["skills"]) for item in job["required"]
+                            if not item["uncertain"] and item["skills"] and not any(
+                                requirement["source"] == item["source"] and
+                                requirement["skills"] == item["skills"] and
+                                requirement["status"] == "project evidence"
+                                for candidate in candidates for requirement in candidate["requirements"])]
+    if unsupported_required and state not in {"none", "insufficient"}:
+        state = "skip"
+        summary = "Skip this job: no resume demonstrates the explicit core requirement(s): " + ", ".join(dict.fromkeys(unsupported_required)) + "."
+    elif state not in {"none", "insufficient"} and best["project_match_ratio"] < .25:
+        state = "skip"
+        summary = "Skip this job: the strongest resume demonstrates fewer than one quarter of the JD's core skills in project work."
+    recommendation = "Apply" if state == "recommended" else "Skip" if state in {"none", "skip"} else "Consider"
     return {
-        "file": best["file"] if state not in {"none", "insufficient"} else None,
-        "name": best["name"] if state not in {"none", "insufficient"} else None,
+        "file": best["file"] if state not in {"none", "insufficient", "skip"} else None,
+        "name": best["name"] if state not in {"none", "insufficient", "skip"} else None,
+        "closest_resume": best["name"] if state == "skip" and len(top_ties) == 1 else None,
+        "closest_resumes": [candidate["name"] for candidate in top_ties] if state == "skip" else [],
         "score": best["score"], "state": state, "job": job, "candidates": candidates,
         "alternatives": [candidate["name"] for candidate in viable[:2]] if close else [],
         "modification_needed": state == "provisional", "recommendation": recommendation,

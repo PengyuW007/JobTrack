@@ -34,13 +34,18 @@ UI = {
 
 
 def format_assessment(result):
-    labels = {"recommended": "Recommended resume", "provisional": "Recommended resume",
+    labels = {"recommended": "Recommended resume", "provisional": "Resume to review",
+              "skip": "Skip this job",
               "close": "Review two options", "none": "No suitable resume found",
               "insufficient": "More job information needed"}
     state = result.get("state", "provisional")
     choice = " / ".join(result.get("alternatives", [])) if state == "close" else result.get("name") or result.get("file")
     compared = result.get("readable_count", len(result.get("candidates", [])))
     lines = [labels.get(state, "Review needed") + (f": {choice}" if choice else "")]
+    if state == "skip" and result.get("closest_resumes"):
+        closest = result["closest_resumes"]
+        label = "Closest resumes — tied (reference only)" if len(closest) > 1 else "Closest resume (reference only)"
+        lines.append(f"{label}: {' / '.join(closest)}")
     if compared:
         lines.append(f"{compared} resumes compared")
     lines.append(result["summary"])
@@ -526,7 +531,7 @@ class Workbench:
         if not result or not result.get("candidates"):
             self.comparison_table.insert("", "end", values=("No comparison available yet.", "", "", ""))
             return
-        candidates = sorted(result["candidates"], key=lambda item: item.get("rank", ()), reverse=True)
+        candidates = list(result["candidates"])
         alternatives = set(result.get("alternatives", []))
         for index, candidate in enumerate(candidates):
             roles = candidate.get("roles") or candidate.get("confirmed_roles") or []
@@ -547,6 +552,8 @@ class Workbench:
                 choice = "Close match"
             elif index == 0 and result.get("state") == "recommended":
                 choice = "Best fit"
+            elif result.get("state") == "skip" and candidate.get("name") in result.get("closest_resumes", []):
+                choice = "Tied closest · skip" if len(result.get("closest_resumes", [])) > 1 else "Closest only · skip"
             elif index == 0:
                 choice = "Leading · verify"
             elif candidate.get("compatibility") == 2:
