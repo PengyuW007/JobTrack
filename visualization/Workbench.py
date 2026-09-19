@@ -1,4 +1,5 @@
 import queue
+import re
 import threading
 import tkinter as tk
 from datetime import datetime, timedelta
@@ -11,7 +12,7 @@ from matplotlib.figure import Figure
 
 from business.AnalyticsService import AnalyticsService
 from business.DuplicateService import DuplicateService, Posting, fetch_posting
-from business.ResumeAdvisor import recommend
+from business.ResumeAdvisor import recommend, _HEADINGS
 from persistence.DataAccessJob import DataAccessJob
 from visualization.DateRangeDialog import DateRangeDialog
 
@@ -807,12 +808,44 @@ class Workbench:
             return
         dialog = tk.Toplevel(self.root)
         dialog.title("Job description used for assessment")
-        dialog.geometry("650x450")
+        dialog.geometry("800x650")
+        dialog.minsize(420, 300)
         dialog.transient(self.root)
-        text = tk.Text(dialog, wrap="word")
-        text.insert("1.0", self.posting.description or "No job description retrieved. Use Paste JD.")
+        dialog.configure(background=UI["surface"])
+        body = ttk.Frame(dialog, padding=16)
+        body.pack(fill="both", expand=True)
+        text = tk.Text(body, wrap="word", font=("Segoe UI", 10),
+                       background=UI["surface"], foreground=UI["text"],
+                       borderwidth=0, highlightthickness=0, padx=8, pady=8,
+                       spacing1=2, spacing3=8)
+        text.tag_configure("title", font=("Segoe UI", 15, "bold"), foreground=UI["primary"], spacing3=10)
+        text.tag_configure("meta", foreground=UI["muted"], spacing3=16)
+        text.tag_configure("heading", font=("Segoe UI", 11, "bold"),
+                           foreground=UI["primary"], spacing1=14, spacing3=8)
+        text.tag_configure("paragraph", lmargin1=0, lmargin2=0, spacing3=10)
+        text.tag_configure("bullet", lmargin1=12, lmargin2=30, spacing3=8,
+                           tabs=(30,))
+        if self.posting.position:
+            text.insert("end", self.posting.position + "\n", "title")
+        metadata = " · ".join(value for value in (self.posting.company,
+                              self.posting.location, self.posting.work_mode) if value)
+        if metadata:
+            text.insert("end", metadata + "\n", "meta")
+        description = self.posting.description or "No job description retrieved. Use Paste JD."
+        for line in description.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            # Reuse the assessment's section vocabulary without changing JD text.
+            if _HEADINGS.fullmatch(line) or (len(line) < 90 and line.endswith(":")):
+                text.insert("end", line + "\n", "heading")
+            elif re.match(r"^(?:[•*\-]|\d+[.)])\s+", line):
+                marker, content = line.split(maxsplit=1)
+                text.insert("end", marker + "\t" + content + "\n", "bullet")
+            else:
+                text.insert("end", line + "\n", "paragraph")
         text.configure(state="disabled")
-        scroll = ttk.Scrollbar(dialog, command=text.yview)
+        scroll = ttk.Scrollbar(body, command=text.yview)
         text.configure(yscrollcommand=scroll.set)
         scroll.pack(side="right", fill="y")
         text.pack(fill="both", expand=True)
