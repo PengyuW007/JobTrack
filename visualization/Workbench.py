@@ -244,6 +244,8 @@ class Workbench:
         self.job_summary = ttk.Frame(box)
         self.job_summary.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(8, 0))
         self.job_summary.columnconfigure(2, weight=1)
+        self.job_summary.columnconfigure(0, weight=1)
+        self.job_summary.columnconfigure(1, weight=1)
         self.job_title = tk.StringVar(value="Paste a job URL from any public platform")
         self.job_title_label = ttk.Label(self.job_summary, textvariable=self.job_title,
                                          font=("Segoe UI", 10, "bold"), wraplength=220)
@@ -353,6 +355,7 @@ class Workbench:
         self.details = tk.StringVar()
         self.details_label = ttk.Label(history, textvariable=self.details, wraplength=315)
         self.details_label.grid(row=3, column=0, columnspan=2, sticky="w", pady=(3, 0))
+        self.details_label.grid_remove()
         self.results.bind("<<TreeviewSelect>>", self.show_details)
         self.set_analysis("Check a job to compare enabled local resumes.")
         self.show_empty_history("Waiting for a job to check")
@@ -474,6 +477,10 @@ class Workbench:
         wrap = max(230, event.width - 55)
         for label in (self.model_status_label, self.job_title_label, self.job_meta_label, self.lookup_status_label):
             label.configure(wraplength=wrap)
+        # Title, company/location and status share a row, not the full panel width.
+        summary_wrap = max(70, (event.width - 150) // 2)
+        self.job_title_label.configure(wraplength=summary_wrap)
+        self.job_meta_label.configure(wraplength=summary_wrap)
         self.details_label.configure(wraplength=wrap)
         self.history_status_label.configure(wraplength=wrap)
         self._resize_table(self.results, (("date", .19), ("channel", .24), ("company", .24), ("position", .33)))
@@ -584,7 +591,10 @@ class Workbench:
         self.empty_history_label.place_forget()
         self.results.grid()
         self.history_scroll.grid()
-        self.history_scroll_x.grid()
+        self.details.set("")
+        self.details_label.grid_remove()
+        self._update_history_scrollbar()
+        self.root.after_idle(self._update_history_scrollbar)
 
     def show_empty_history(self, message="No matching application found"):
         self.results.configure(height=4)
@@ -847,7 +857,8 @@ class Workbench:
         self.posting = posting
         self._set_job_details_visible(True)
         self.job_title.set(posting.position or "Job page unavailable")
-        self.job_meta.set(posting.company or "")
+        self.job_meta.set(" · ".join(value for value in
+                          (posting.company, posting.location, posting.work_mode) if value))
         self.show_job_tags()
         self.input_status.set("JD ready" if posting.description else "JD unavailable")
         self.review_button.configure(state="normal" if posting.description else "disabled")
@@ -920,6 +931,10 @@ class Workbench:
         if selected and selected[0] != "empty":
             match = self.history_rows[int(selected[0])]
             self.details.set(f"{match['status']} · {match['reason']}")
+            self.details_label.grid()
+        else:
+            self.details.set("")
+            self.details_label.grid_remove()
 
     def startup_sync(self):
         if Path("token.json").is_file():

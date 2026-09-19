@@ -8,6 +8,78 @@ from visualization.Workbench import format_assessment
 
 
 class ResumeAdvisorTests(unittest.TestCase):
+    def test_connector_duties_are_not_qa_background_or_sales_collaboration(self):
+        jd = '''Customer Support Developer
+Responsibilities
+Develop database connectors using Java and JDBC.
+Debug connector code and diagnose CDC replication issues.
+Collaborate with Sales and marketing.
+What You'll Need
+2+ years experience in software engineering, QA, or similar roles supporting developers.
+Java or Kotlin required.
+Experience with AWS, GCP, or Azure.
+Nice-to-have
+Docker or Kubernetes.
+Must-have
+SQL required.'''
+        profile = job_profile(jd)
+        self.assertEqual(profile['roles'], ['backend'])
+        self.assertNotIn('sales', profile['skills'])
+        self.assertNotIn('docker', profile['skills'])
+        groups = [set(item['skills']) for item in profile['required'] if not item['uncertain']]
+        self.assertIn({'aws', 'gcp', 'azure'}, groups)
+        self.assertIn({'java', 'kotlin'}, groups)
+        self.assertIn({'sql'}, groups)
+        self.assertTrue({'jdbc', 'cdc', 'replication'} <= set(profile['skills']))
+        result = local_recommendation(jd, [
+            ('backend.txt', 'Built Java database connectors with JDBC, CDC replication and SQL on AWS.'),
+            ('qa.txt', 'Built test automation using Python. Developed regression tests.'),
+            ('web.txt', 'Built full stack web interfaces using React. Developed Python APIs using Docker and Kubernetes.')])
+        self.assertEqual(result['file'], 'backend.txt')
+
+    def test_nice_to_have_cannot_outweigh_must_have(self):
+        jd = '''Backend Engineer
+Responsibilities
+Build backend APIs.
+Must-have
+Java required.
+Nice-to-have
+Python, Docker, Kubernetes, React, AWS.'''
+        result = local_recommendation(jd, [
+            ('required.txt', 'Built backend APIs using Java.'),
+            ('optional.txt', 'Built backend APIs using Python, Docker, Kubernetes, React and AWS.')])
+        self.assertEqual(result['file'], 'required.txt')
+        self.assertEqual(result['candidates'][0]['gaps'], [])
+        self.assertTrue(any('java' in gap for gap in result['candidates'][1]['gaps']))
+
+    def test_sensor_tower_heading_variants_keep_role_and_requirements(self):
+        for heading in ('About this role:', 'About the role', 'About this position:'):
+            with self.subTest(heading=heading):
+                jd = f'''Full Stack Engineer
+About Example
+Our marketing platform serves finance teams.
+{heading}
+Develop full-stack applications with a backend focus.
+What you will do in a typical day:
+Manage tech debt and deliver new features. Code in SQL and C# using AWS.
+What you can bring:
+Experienced C# developer.
+Be able to code in C# and SQL.
+Big Plus: Comfortable reading and modifying JavaScript/React.
+Our Engineering Culture
+We support healthcare communities.
+Fraud warning:
+Never provide financial information.'''
+                profile = job_profile(jd)
+                self.assertTrue(profile['input_ready'])
+                self.assertTrue({'c#', 'sql', 'aws'} <= set(profile['skills']))
+                self.assertNotIn('react', profile['skills'])
+                self.assertIn('react', profile['optional_skills'])
+                self.assertNotIn('healthcare', profile['skills'])
+                self.assertTrue(any('c#' in item['skills'] for item in profile['required']))
+                result = local_recommendation(jd, [('R.txt', 'Built full-stack backend applications using C# SQL AWS.')])
+                self.assertNotEqual(result['state'], 'insufficient')
+
     def test_company_and_benefits_are_not_requirements(self):
         job = '''Backend Engineer
 About Example

@@ -19,6 +19,7 @@ SKILLS = {
     "api testing", "regression testing", "test automation", "fastapi", "postgres",
     "react native", "next.js", "graphql", "mongodb", "express", "spring boot",
     "spring", "angular", "html", "css", "redis", "mysql", "selenium", "pytest",
+    "jdbc", "cdc", "query optimization", "schema evolution", "replication", "etl",
 }
 
 SKILL_ALIASES = {
@@ -29,6 +30,7 @@ SKILL_ALIASES = {
     "typescript": ("typescript",),
     "spring boot": ("spring boot", "springboot"),
     "rest": ("rest", "restful"),
+    "cdc": ("cdc", "change data capture"),
     "ci/cd": ("ci/cd", "ci cd", "continuous integration", "continuous delivery"),
 }
 
@@ -61,24 +63,27 @@ SPECIALIZATIONS = {
 
 ROLE_LABELS = tuple(label for label in SPECIALIZATIONS if label != "software")
 _HEADINGS = re.compile(
-    r"^[ \t]*(nice to have|preferred qualifications|preferred skills|bonus points|"
+    r"^[ \t]*(nice[ -]to[ -]have|preferred qualifications|preferred skills|bonus points|"
     r"what we offer|benefits|about [^\n:]+|our values|we are challengers|we are united|we care|"
-    r"what.s in it for you|please note|what you bring|"
-    r"what we.re looking for|requirements|qualifications|must have|"
-    r"what you.ll do|responsibilities|your responsibilities|the role)[ \t]*(?::|$)",
+    r"what.s in it for you|please note|what you (?:can )?bring|"
+    r"our engineering culture|fraud warning|to all recruitment agencies|"
+    r"what we.re looking for|what you(?:.ll| will) need|required qualifications|requirements|qualifications|must[ -]have|"
+    r"what you(?:.ll| will) do(?: in a typical day)?|responsibilities|your responsibilities|the role)[ \t]*(?::|$)",
     re.IGNORECASE | re.MULTILINE,
 )
 _OPTIONAL = {"nice to have", "preferred qualifications", "preferred skills", "bonus points"}
 _IGNORE = {"what we offer", "benefits", "about us", "about the company", "our values",
            "we are challengers", "we are united", "we care", "what’s in it for you",
-           "what's in it for you"}
+           "what's in it for you", "our engineering culture", "fraud warning",
+           "to all recruitment agencies"}
 _ACTION = re.compile(
     r"\b(build(?:s|ing)?|built|develop(?:s|ed|ing)?|deliver(?:s|ed|ing)?|"
     r"implement(?:s|ed|ing)?|maintain(?:s|ed|ing)?|creat(?:e|es|ed|ing)|"
     r"automat(?:e|es|ed|ing)|test(?:s|ed|ing)?(?!\s+(?:automation|engineer|tools))|"
     r"design(?:s|ed|ing)?(?!\s+(?:patterns|systems))|deploy(?:s|ed|ing)?|led|"
     r"lead(?:s|ing)?|manage(?:s|d)?|managing|plan(?:s|ned|ning)?|"
-    r"support(?:s|ed|ing)?|responsible for)\b", re.IGNORECASE,
+    r"support(?:s|ed|ing)?|writ(?:e|es|ing)|wrote|debug(?:s|ged|ging)?|"
+    r"troubleshoot(?:s|ing)?|diagnos(?:e|ed|ing)|responsible for)\b", re.IGNORECASE,
 )
 
 
@@ -150,7 +155,7 @@ def job_sections(description):
             for sentence in _sentences(body):
                 if re.search(r"\b(?:not required|not necessary|do not need)\b", sentence, re.I) and not re.search(r"\b(?:but|and|however)\b|;", sentence, re.I):
                     continue
-                if re.search(r"\b(?:preferred|a plus|optional)\b", sentence, re.I):
+                if re.search(r"\b(?:preferred|nice[ -]to[ -]have|a plus|big plus|optional)\b", sentence, re.I) and not re.search(r"\b(?:must|required|essential)\b", sentence, re.I):
                     optional.append(sentence)
                 else:
                     core.append(sentence)
@@ -159,8 +164,10 @@ def job_sections(description):
 
 def _section_blocks(description):
     parts = _HEADINGS.split(description)
-    return [("", parts[0])] + [("about us" if heading.casefold().startswith("about ") else
-                               "requirements" if heading.casefold() == "what you bring" else heading.casefold(), body)
+    return [("", parts[0])] + [("the role" if heading.strip().casefold() in
+                               {"about this role", "about the role", "about this position", "about the position", "about the job"} else
+                               "about us" if heading.casefold().startswith("about ") else
+                               "requirements" if heading.strip().casefold() in {"what you bring", "what you can bring", "what you'll need", "what you’ll need", "what you will need", "required qualifications"} else heading.strip().casefold().replace("-", " "), body)
                                for heading, body in zip(parts[1::2], parts[2::2])]
 
 
@@ -176,6 +183,8 @@ def _role_evidence(text, duties_only=False):
         # A collaboration target is not the work owned by this role.
         owned = re.split(r"\b(?:collaborat\w*|partner\w*|work(?:ing) with)\b", sentence,
                          maxsplit=1, flags=re.IGNORECASE)[0]
+        if duties_only and re.search(r"\b(?:years?\b.*\bexperience|experience\s+(?:in|as|with)|background in)\b", owned, re.I):
+            continue
         if duties_only and not _ACTION.search(owned):
             continue
         if duties_only and re.match(r"support\w*\s+(?:colleagues|teams|developers)", owned, re.I):
@@ -187,7 +196,7 @@ def _role_evidence(text, duties_only=False):
             if re.search(r"\b(?:web (?:interfaces|ui|screens)|frontend)\b", owned, re.I) or (
                     "react" in detected_skills(owned) and re.search(r"\b(?:web|interfaces?|screens?|frontend)\b", owned, re.I)):
                 roles.add("frontend")
-            if re.search(r"\b(?:apis?|endpoints?|microservices|server-side|backend|(?:python|java|node) services)\b", owned, re.I):
+            if re.search(r"\b(?:apis?|endpoints?|microservices|server-side|backend|(?:python|java|node) services|(?:database|jvm(?:-based)?) connectors?|connector code)\b", owned, re.I):
                 roles.add("backend")
             if re.search(r"\b(?:build|built|develop\w*|maintain\w*|creat\w*)\s+(?:\w+\s+){0,2}(?:automated tests|test automation|regression tests|api tests)\b", owned, re.I):
                 roles.add("qa")
@@ -209,7 +218,7 @@ def _requirements(description):
         if heading in _IGNORE:
             continue
         for sentence in _sentences(body):
-            is_optional = heading in _OPTIONAL or bool(re.search(r"\b(?:preferred|nice to have|a plus|bonus|optional)\b", sentence, re.I))
+            is_optional = heading in _OPTIONAL or bool(re.search(r"\b(?:preferred|nice[ -]to[ -]have|a plus|big plus|bonus|optional)\b", sentence, re.I))
             is_required = heading in {"requirements", "qualifications", "must have", "what we’re looking for", "what we're looking for"} or bool(re.search(r"\b(?:required|must|strong|minimum|essential)\b", sentence, re.I))
             skills = detected_skills(sentence)
             if is_optional and re.search(r"\b(?:required|must|minimum|essential)\b", sentence, re.I) and not re.search(r"\b(?:not required|not necessary)\b", sentence, re.I):
@@ -228,7 +237,9 @@ def _requirements(description):
             # Only interpret simple coordinated alternatives. Mixed AND/OR clauses
             # remain uncertain rather than inventing an incorrect requirement tree.
             alternatives = bool(re.search(r"\b(?:or|either)\b", sentence, re.I))
-            mixed = alternatives and bool(re.search(r"\band\b|;|,", sentence, re.I))
+            # An Oxford-comma list ending in OR is one alternative group.
+            # A comma after OR, or an AND clause, remains ambiguous.
+            mixed = alternatives and bool(re.search(r"\band\b|;|\bor\b[^;]*,", sentence, re.I))
             residual = sentence
             for skill in sorted(skills, key=len, reverse=True):
                 for alias in SKILL_ALIASES.get(skill, (skill,)):
@@ -291,7 +302,9 @@ def job_profile(description, title=None):
     return {
         "title": title or "", "description": cleaned, "core": core,
         "roles": sorted(roles), "role_evidence": duties,
-        "skills": sorted(detected_skills(core)), "optional_skills": sorted(detected_skills(optional)),
+        "skills": sorted(detected_skills("\n".join(
+            re.split(r"\b(?:collaborat\w*|partner\w*|work(?:ing) with)\b", sentence, maxsplit=1, flags=re.I)[0]
+            for sentence in _sentences(core)))), "optional_skills": sorted(detected_skills(optional)),
         "required": required, "preferred": preferred, "minimum_years": numeric_years,
         "experience_skills": sorted(detected_skills(experience_source)),
         "experience_roles": sorted(detected_specializations(experience_source) - {"software"}),
@@ -406,7 +419,8 @@ def local_recommendation(description, resumes, job_title=None, resume_profiles=N
                             for source in evidence[skill]]))[:6],
             "score": round(ratio * 10, 1),
             "role_coverage": role_coverage,
-            "rank": (compatibility, role_coverage, int(eligible), required_ratio, project_ratio, ratio, len(optional_matches)),
+            "rank": (compatibility, role_coverage, int(eligible), required_ratio, project_ratio, ratio,
+                     sum(bool(set(item["skills"]) & skills) for item in job["preferred"])),
         }
         candidates.append(candidate)
     if not candidates:

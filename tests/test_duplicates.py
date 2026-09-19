@@ -13,6 +13,22 @@ from parsers.EmailParser import EmailParser
 
 
 class DuplicateTests(unittest.TestCase):
+    def test_posting_location_and_explicit_work_mode(self):
+        node = {'@type': 'JobPosting', 'title': 'Engineer',
+                'jobLocation': {'address': {'addressLocality': 'Toronto', 'addressRegion': 'ON'}},
+                'description': 'This is a hybrid role. Build APIs.'}
+        def parse():
+            return parse_posting('https://example.com/job',
+                '<script type="application/ld+json">' + json.dumps(node) + '</script>')
+        self.assertEqual(parse().location, 'Toronto, ON')
+        self.assertEqual(parse().work_mode, 'Hybrid')
+        node['description'] = 'Remote interviews are available. Collaborate with remote teams.'
+        self.assertEqual(parse().work_mode, '')
+        node['jobLocationType'] = 'TELECOMMUTE'
+        self.assertEqual(parse().work_mode, 'Remote')
+        del node['jobLocation']
+        self.assertEqual(parse().location, '')
+
     def setUp(self):
         self.db = DataAccess.__new__(DataAccess)
         self.db.conn = sqlite3.connect(':memory:')

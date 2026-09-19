@@ -55,6 +55,8 @@ class Posting:
     position: str = ''
     description: str = ''
     warning: str = ''
+    location: str = ''
+    work_mode: str = ''
 
 
 class PageParser(HTMLParser):
@@ -118,8 +120,40 @@ def parse_posting(url, source):
         company = node.get('hiringOrganization') or {}
         company = company.get('name', '') if isinstance(company, dict) else str(company)
         description = posting_description(str(node.get('description', '')))
-        return Posting(url, company, str(node.get('title', '')), description)
+        locations = node.get('jobLocation') or []
+        if not isinstance(locations, list):
+            locations = [locations]
+        names = []
+        for place in locations:
+            address = place.get('address', {}) if isinstance(place, dict) else place
+            if isinstance(address, dict):
+                country = address.get('addressCountry', '')
+                if isinstance(country, dict):
+                    country = country.get('name', '')
+                name = ', '.join(str(value) for value in (
+                    address.get('addressLocality'), address.get('addressRegion'), country) if value)
+            else:
+                name = str(address or '')
+            if name and name not in names:
+                names.append(name)
+        mode = work_mode_from_text(description)
+        if str(node.get('jobLocationType', '')).upper() == 'TELECOMMUTE':
+            mode = 'Remote'
+        return Posting(url, company, str(node.get('title', '')), description,
+                       location=' / '.join(names), work_mode=mode)
     return Posting(url, warning='This page could not be parsed automatically.')
+
+
+def work_mode_from_text(text):
+    """Use explicit workplace statements, not incidental mentions of remote work."""
+    modes = []
+    for label, pattern in (('Hybrid', r'hybrid'), ('Remote', r'remote'), ('On-site', r'on[ -]site')):
+        if re.search(r'(?:^|\n)\s*(?:(?:work(?:place| arrangement| mode| model)|location)\s*:\s*)?'
+                     + pattern + r'\s*(?:$|\n)', text, re.I) or re.search(
+                     r'\b(?:this (?:is a |role is |position is )|work (?:in a |on a )?)'
+                     + pattern + r'\b|\b' + pattern + r'\s+(?:role|position|work model|working model|work arrangement)\b', text, re.I):
+            modes.append(label)
+    return modes[0] if len(modes) == 1 else ''
 
 
 def posting_description(source):
@@ -272,7 +306,11 @@ def _fetch_with_browser(url):
             '[class*="job-description"]',
         ))
         if description and (position or posting.position):
-            return Posting(url, company or posting.company, position or posting.position, description)
+            location = text_from(('.topcard__flavor--bullet', '[data-testid="job-location"]',
+                                  '[data-testid="inlineHeader-companyLocation"]'))
+            return Posting(url, company or posting.company, position or posting.position, description,
+                           location=location or posting.location,
+                           work_mode=posting.work_mode or work_mode_from_text(description))
         return posting
     finally:
         driver.quit()
