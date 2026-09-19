@@ -2,7 +2,7 @@
 
 JobTrack is a private desktop workspace for reviewing job opportunities and tracking applications. It imports job-related Gmail messages into a local SQLite database, displays an application funnel, checks whether a job may have been submitted before, and recommends one of the resumes selected by the user.
 
-The English desktop interface keeps Job check and Resume choice on the left, with Application history, Resumes, and Application overview on the right. The window does not scroll as a page; long descriptions, evidence, and tables can scroll within their own panels.
+The English desktop interface keeps Job check, Application history, and Resume choice on the left, with Resumes and Application overview on the right. The window does not scroll as a page; long descriptions, evidence, and tables can scroll within their own panels.
 
 ## Start here
 
@@ -59,7 +59,7 @@ When synchronization ends, the chart and the currently checked job's application
 
 - Accepts a complete job URL from LinkedIn, Indeed, or another public platform.
 - Also accepts a pasted JD with an optional title and company. History checking requires a URL or both company and title; missing identifiers are shown as unavailable rather than as a negative result.
-- Starts automatically after a URL is pasted or Enter is pressed.
+- Starts automatically after a URL is pasted or Enter is pressed, and shows an analyzing state while the job page is being read.
 - Reads public `JobPosting` structured data when available.
 - Uses browser fallback for sites that require JavaScript.
 - Searches the complete local history independently of the chart date range.
@@ -72,13 +72,12 @@ Some platforms block automated access or require login. In those cases, JobTrack
 
 ### Resume manager
 
-- Adds PDF, DOCX, TXT, and Markdown resumes by local file reference.
-- Replaces, renames, or removes a saved resume entry.
+- Adds PDF, DOCX, TXT, and Markdown resumes from the clearly labelled **＋ Add resume** action above the table.
+- Keeps Edit and Delete in separate table columns; Edit offers Rename and Replace file, while Delete asks for confirmation before removing the saved reference.
 - Enables or disables individual resumes by double-clicking a row.
-- Uses **Set direction** to confirm one or more work directions independently of technologies such as Java. Labels are saved against the resume entry ID; renaming the entry does not change them.
 - Keeps resume files in their original folders; JobTrack stores only their paths and metadata in `tracker.db`.
 - Compares all enabled and available resumes when a job description is parsed.
-- Recomputes the current assessment when resume entries, directions, or enabled states change. Missing files and unreadable documents are reported instead of silently omitted.
+- Recomputes the current assessment when resume entries or enabled states change. Missing files and unreadable documents are reported instead of silently omitted.
 
 ### Basic resume recommendation
 
@@ -94,7 +93,7 @@ Project evidence: java, react, sql
 
 The local assessment uses deterministic English-language rules. It separates work direction from technologies, recognizes skill aliases, checks simple alternative requirements such as Java or Python, and evaluates all candidates before choosing. Resume filenames do not determine the ranking. A confirmed label or a skill list alone does not establish delivery evidence.
 
-The result can be Recommended, Provisional choice, Review two options, No suitable resume found, or More job information needed. Mixed requirements, unassessed qualifications, unknown experience, incomplete inputs, and unreadable candidates prevent an unqualified recommendation. Numeric star ratings are not displayed as confidence. Complex phrasing and unsupported terminology still need manual review; no measured real-world accuracy is claimed.
+The result can be Recommended resume, Review two options, No suitable resume found, or More job information needed. Mixed requirements, unassessed qualifications, unknown experience, incomplete inputs, and unreadable candidates prevent an unqualified recommendation. Numeric star ratings are not displayed as confidence. Complex phrasing and unsupported terminology still need manual review; no measured real-world accuracy is claimed.
 
 ### Basic version
 
@@ -115,10 +114,10 @@ JobTrack first requests a job page directly. If browser fallback is required, it
 | Operating system | Browser order |
 | --- | --- |
 | Windows | Edge, Chrome, Firefox |
-| macOS | Safari, Chrome, Firefox, Edge |
+| macOS | Chrome, Firefox, Edge |
 | Linux | Firefox, Chrome, Edge |
 
-Safari users may need to enable **Safari → Develop → Allow Remote Automation**. JobTrack must use a Selenium-supported browser because opening an ordinary default-browser window does not provide page content to the application.
+Automatic job-page parsing uses a supported browser in headless mode, without opening a visible window. Safari is not used for automatic fallback because it does not support this mode. If a site blocks automated access, use Paste JD. Google authorization may still open a browser when you explicitly connect or reconnect Gmail.
 
 ## Download
 
@@ -214,7 +213,7 @@ Select **Sync Gmail** and complete Google authorization if prompted. Wait until 
 
 ### 2. Manage resumes
 
-Use **Add** to select local files. Double-click a row to enable or disable it. Use **Set direction** to confirm relevant work directions; a Java resume can be Backend or Full Stack depending on its contents. Use **Replace** for a newer file, **Rename** to change its display name, and **Remove** to delete its saved reference. Removing an entry does not delete the original file.
+Select **＋ Add resume** above the Resume table to add local files. Double-click a row to enable or disable it. JobTrack infers each resume's work direction from responsibility and project evidence in its text. Select the row's Edit icon to rename it or replace its file, or select its Delete icon to remove the saved reference. Removing an entry does not delete the original file.
 
 ### 3. Check a job
 

@@ -61,14 +61,17 @@ SPECIALIZATIONS = {
 
 ROLE_LABELS = tuple(label for label in SPECIALIZATIONS if label != "software")
 _HEADINGS = re.compile(
-    r"\b(nice to have|preferred qualifications|preferred skills|bonus points|"
-    r"what we offer|benefits|about (?:us|the company)|"
+    r"^[ \t]*(nice to have|preferred qualifications|preferred skills|bonus points|"
+    r"what we offer|benefits|about [^\n:]+|our values|we are challengers|we are united|we care|"
+    r"what.s in it for you|please note|what you bring|"
     r"what we.re looking for|requirements|qualifications|must have|"
-    r"what you.ll do|responsibilities|your responsibilities|the role)\s*:?",
-    re.IGNORECASE,
+    r"what you.ll do|responsibilities|your responsibilities|the role)[ \t]*(?::|$)",
+    re.IGNORECASE | re.MULTILINE,
 )
 _OPTIONAL = {"nice to have", "preferred qualifications", "preferred skills", "bonus points"}
-_IGNORE = {"what we offer", "benefits", "about us", "about the company"}
+_IGNORE = {"what we offer", "benefits", "about us", "about the company", "our values",
+           "we are challengers", "we are united", "we care", "what’s in it for you",
+           "what's in it for you"}
 _ACTION = re.compile(
     r"\b(build(?:s|ing)?|built|develop(?:s|ed|ing)?|deliver(?:s|ed|ing)?|"
     r"implement(?:s|ed|ing)?|maintain(?:s|ed|ing)?|creat(?:e|es|ed|ing)|"
@@ -156,7 +159,8 @@ def job_sections(description):
 
 def _section_blocks(description):
     parts = _HEADINGS.split(description)
-    return [("", parts[0])] + [(heading.casefold(), body)
+    return [("", parts[0])] + [("about us" if heading.casefold().startswith("about ") else
+                               "requirements" if heading.casefold() == "what you bring" else heading.casefold(), body)
                                for heading, body in zip(parts[1::2], parts[2::2])]
 
 
@@ -260,10 +264,16 @@ def job_profile(description, title=None):
     # Titles establish the principal direction. Duties supplement generic titles.
     duties = _role_evidence(core, duties_only=True)
     roles = title_roles or set(duties)
-    if "full stack" in roles:
-        roles -= {"frontend", "backend", "qa"}
-    elif "qa" in title_roles:
+    if "qa" in title_roles:
+        # Testing a full-stack product is still a QA role when the title
+        # explicitly identifies testing as the principal responsibility.
         roles = {"qa"}
+    elif "full stack" in roles:
+        roles -= {"frontend", "backend", "qa"}
+    elif not title_roles and roles & {"frontend", "backend", "mobile"}:
+        # Routine automated tests accompany software delivery; they alone
+        # do not turn a generic developer vacancy into a QA vacancy.
+        roles.discard("qa")
     required, preferred = _requirements(cleaned)
     experience_text = "\n".join(sentence for heading, body in _section_blocks(cleaned)
                                 if heading not in _IGNORE | _OPTIONAL
@@ -335,6 +345,10 @@ def local_recommendation(description, resumes, job_title=None, resume_profiles=N
         role_sources = [source for role in job_roles for source in profile["role_evidence"].get(role, [])]
         grounded_role = any(_ACTION.search(source) for source in role_sources)
         content_compatible = bool(job_roles & set(profile["roles"]))
+        grounded_roles = {role for role in job_roles
+                          if any(_ACTION.search(source)
+                                 for source in profile["role_evidence"].get(role, []))}
+        role_coverage = len(grounded_roles) / max(len(job_roles), 1)
         confirmed = set(profile["confirmed_roles"])
         label_conflict = bool(confirmed and job_roles and not (confirmed & job_roles))
         compatibility = (2 if content_compatible else 1 if job_roles & confirmed else
@@ -391,7 +405,8 @@ def local_recommendation(description, resumes, job_title=None, resume_profiles=N
             "evidence": list(dict.fromkeys(role_sources + [source for skill in project_overlap
                             for source in evidence[skill]]))[:6],
             "score": round(ratio * 10, 1),
-            "rank": (compatibility, int(eligible), required_ratio, project_ratio, ratio, len(optional_matches)),
+            "role_coverage": role_coverage,
+            "rank": (compatibility, role_coverage, int(eligible), required_ratio, project_ratio, ratio, len(optional_matches)),
         }
         candidates.append(candidate)
     if not candidates:
@@ -400,8 +415,8 @@ def local_recommendation(description, resumes, job_title=None, resume_profiles=N
     best = candidates[0]
     viable = [candidate for candidate in candidates if candidate["compatibility"] >= 0 and candidate["overlap"]]
     # A close comparison cannot be resolved by input order or optional tool counts.
-    close = len(viable) > 1 and viable[0]["rank"][:2] == viable[1]["rank"][:2] and all(
-        abs(a - b) < .1 for a, b in zip(viable[0]["rank"][2:5], viable[1]["rank"][2:5]))
+    close = len(viable) > 1 and viable[0]["rank"][:3] == viable[1]["rank"][:3] and all(
+        abs(a - b) < .1 for a, b in zip(viable[0]["rank"][3:6], viable[1]["rank"][3:6]))
     if not job["input_ready"] or not core_groups:
         state, summary = "insufficient", "Add the full JD with responsibilities and requirements before choosing a resume."
     elif not viable:

@@ -76,7 +76,7 @@ No packaging configuration, Makefile, or CI workflow is currently tracked.
 - `posting_snapshots`: job URL/company/title/description snapshots used for repost matching.
 - `resumes`: display names, local file paths, enabled state, and update dates; resume contents are not copied into the database.
 - `sync_metadata`, `gmail_scan_progress`, and `evidence_metadata`: incremental/rebuild synchronization state.
-- `app_settings`: local key/value application settings, including confirmed resume directions under `resume_roles_<id>`; directions survive renaming and are removed with the saved reference.
+- `app_settings`: local key/value application settings. Legacy resume-direction values may remain in an existing database but are no longer used by the interface or recommendation flow.
 
 Database changes must remain backward compatible because schema upgrades run against a user's existing local `tracker.db`. Add or reuse migration logic in `DataAccess.create_tables()` and test idempotency.
 
@@ -84,7 +84,7 @@ Database changes must remain backward compatible because schema upgrades run aga
 
 - Google OAuth and Gmail API: configured locally with `credentials.json`; produces `token.json`; scope is `gmail.readonly`.
 - Public job pages: fetched with `requests` after URL and public-IP validation.
-- Browser fallback: Selenium tries Safari, Chrome, Firefox, then Edge on macOS. Safari may require **Develop > Allow Remote Automation**.
+- Browser fallback: Selenium runs without a visible window, trying Chrome, Firefox, then Edge on macOS. Safari is excluded from automatic fallback because it does not provide headless operation.
 - Resume formats: TXT/Markdown via standard file reads, DOCX via ZIP/XML extraction, and PDF via `pypdf`.
 
 Never add an external analysis provider or transmit private job, resume, email, or application data without the explicit consent flow required by `AGENTS.md`.
@@ -134,7 +134,7 @@ venv/bin/python3 -m compileall -q business gmail objects parsers persistence vis
 - URL fetching includes SSRF defenses, redirect limits, response-size limits, and browser fallback. Preserve those controls when changing parsing.
 - Tkinter must be updated on the UI thread. Background work reports results through `Workbench.events` and `poll()`.
 - Job and resume result events carry separate generation numbers so an old result cannot overwrite a new check or updated resume selection, including repeated checks of the same URL.
-- The desktop uses a fixed two-column work area: Job check / Resume choice on the left and Application history / Resumes / Application overview on the right. Long content scrolls only inside a panel, never as a whole page.
+- The desktop uses a balanced, fixed two-column work area: Job check / Application history / Resume choice on the left and Resumes / Application overview on the right. Resume choice and Application overview share the same bottom edge; long content scrolls only inside a panel, never as a whole page.
 - Local assessment is an English deterministic evidence aid, not a calibrated confidence or eligibility model. Unsupported requirements, missing experience evidence and incomplete comparisons must remain visible; confirmed labels do not replace delivery evidence.
 - Browser automation varies by OS and installed browsers; do not require Chrome specifically.
 - `JobTrack.pyw` sets the repository root as the working directory, so direct `main.py` execution from another directory is not equivalent.

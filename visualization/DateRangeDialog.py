@@ -99,8 +99,8 @@ class DateRangeDialog:
         return start.isoformat(), end.isoformat()
 
     @classmethod
-    def select(cls, default_start, default_end):
-        root = tk.Tk()
+    def select(cls, default_start, default_end, parent=None):
+        root = tk.Toplevel(parent) if parent else tk.Tk()
         root.title("JobTrack Date Range")
         root.resizable(False, False)
 
@@ -198,12 +198,15 @@ class DateRangeDialog:
         x = (root.winfo_screenwidth() - root.winfo_width()) // 2
         y = (root.winfo_screenheight() - root.winfo_height()) // 2
         root.geometry(f"+{x}+{y}")
-        root.mainloop()
+        if parent:
+            parent.wait_window(root)
+        else:
+            root.mainloop()
 
         return result["value"]
 
     @classmethod
-    def open_calendar(cls, parent, target_value):
+    def open_calendar(cls, parent, target_value, on_select=None):
         try:
             initial_date = datetime.strptime(
                 target_value.get().strip(), cls.DATE_FORMAT
@@ -211,4 +214,9 @@ class DateRangeDialog:
         except ValueError:
             initial_date = date.today()
 
-        CalendarPopup(parent, initial_date, target_value.set)
+        def select(value):
+            target_value.set(value)
+            if on_select:
+                on_select()
+
+        CalendarPopup(parent, initial_date, select)

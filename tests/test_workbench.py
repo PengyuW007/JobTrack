@@ -1,6 +1,7 @@
 import unittest
 import queue
 import sqlite3
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from business.DuplicateService import Posting
@@ -105,6 +106,48 @@ class WorkbenchTests(unittest.TestCase):
             thread.call_args.kwargs['target']()
         self.assertFalse(self.view.synchronize.call_args.kwargs['interactive'])
 
+    def test_resume_row_delete_action_confirms_before_removing(self):
+        self.view.resume_table = MagicMock()
+        self.view.resume_table.identify_region.return_value = 'cell'
+        self.view.resume_table.identify_column.return_value = '#4'
+        self.view.resume_table.identify_row.return_value = '7'
+        self.view.remove_resume = MagicMock()
+        event = SimpleNamespace(x=170, y=12, x_root=400, y_root=300)
+        with patch('visualization.Workbench.messagebox.askyesno', return_value=True):
+            result = self.view._resume_table_click(event)
+        self.view.resume_table.selection_set.assert_called_once_with('7')
+        self.view.remove_resume.assert_called_once()
+        self.assertEqual(result, 'break')
+
+    def test_resume_row_double_click_toggles_use_outside_actions(self):
+        self.view.resume_table = MagicMock()
+        self.view.resume_table.identify_column.return_value = '#2'
+        self.view.resume_table.identify_row.return_value = '7'
+        self.view.toggle_resume = MagicMock()
+        result = self.view._resume_table_double_click(SimpleNamespace(x=40, y=12))
+        self.view.resume_table.selection_set.assert_called_once_with('7')
+        self.view.toggle_resume.assert_called_once()
+        self.assertEqual(result, 'break')
+
+    def test_url_lookup_immediately_shows_analyzing_state(self):
+        self.view._clear_job_result = MagicMock()
+        self.view._set_job_details_visible = MagicMock()
+        self.view.show_empty_history = MagicMock()
+        self.view.job_title = MagicMock()
+        self.view.job_meta = MagicMock()
+        self.view.input_status = MagicMock()
+        self.view.review_button = MagicMock()
+        with patch('visualization.Workbench.threading.Thread') as thread:
+            self.view.lookup_url()
+        self.assertTrue(self.view.analyzing)
+        self.view.job_title.set.assert_called_once_with('Analyzing job link…')
+        self.view.input_status.set.assert_called_once_with('Analyzing…')
+        self.view.lookup_status.set.assert_called_once_with('Waiting for job analysis')
+        self.view.show_empty_history.assert_called_once_with('Analyzing job description…')
+        self.view.set_analysis.assert_called_once_with('Analyzing job description…')
+        self.view._set_job_details_visible.assert_called_once_with(True)
+        thread.return_value.start.assert_called_once()
+
 
 class DesktopLayoutTests(unittest.TestCase):
     def test_panels_fit_supported_desktop_sizes_without_page_scrolling(self):
@@ -121,10 +164,28 @@ class DesktopLayoutTests(unittest.TestCase):
         try:
             with patch('visualization.Workbench.tk.Tk', return_value=root), patch.object(Workbench, 'startup_sync'):
                 view = Workbench(db)
-                for width, height in [(900, 680), (1100, 760), (1400, 900)]:
+                self.assertTrue(view.url_entry.bind('<<Paste>>'))
+                url_tab = view.input_tabs.nametowidget(view.input_tabs.tabs()[0])
+                button_labels = [child.cget('text') for child in url_tab.winfo_children()
+                                 if child.winfo_class() == 'TButton']
+                self.assertEqual(button_labels, ['Clear'])
+                self.assertEqual(tuple(view.resume_table['columns']), ('use', 'name', 'edit', 'delete'))
+                self.assertEqual(view.resume_table.heading('edit', 'text'), 'Edit')
+                self.assertEqual(view.resume_table.heading('delete', 'text'), 'Delete')
+                for width, height in [(900, 760), (1100, 760), (1400, 900)]:
                     root.geometry(f'{width}x{height}+10000+10000')
                     root.deiconify()
                     root.update()
+                    self.assertLessEqual(abs(view.left.winfo_width() - view.right.winfo_width()), 1)
+                    self.assertEqual(view.job_check.winfo_height(), view.resumes_box.winfo_height())
+                    self.assertLessEqual(abs(
+                        (view.analysis_frame.winfo_rooty() + view.analysis_frame.winfo_height()) -
+                        (view.overview.winfo_rooty() + view.overview.winfo_height())), 1)
+                    initial_job_height = view.job_check.winfo_height()
+                    view._set_job_details_visible(True)
+                    root.update()
+                    self.assertEqual(view.job_check.winfo_height(), initial_job_height)
+                    view._set_job_details_visible(False)
                     for panel in [view.job_check, view.analysis_frame, view.history_label, view.resumes_box, view.overview]:
                         x = panel.winfo_rootx() - root.winfo_rootx()
                         y = panel.winfo_rooty() - root.winfo_rooty()
@@ -134,14 +195,15 @@ class DesktopLayoutTests(unittest.TestCase):
                         self.assertLessEqual(y + panel.winfo_height(), height)
                     self.assertIs(view.job_check.master, view.left)
                     self.assertIs(view.analysis_frame.master, view.left)
-                    for panel in [view.history_label, view.resumes_box, view.overview]:
+                    self.assertIs(view.history_label.master, view.left)
+                    for panel in [view.resumes_box, view.overview]:
                         self.assertIs(panel.master, view.right)
-                    self.assertGreater(view.analysis_text.winfo_height(), 80)
+                    self.assertTrue(view.analysis_empty.winfo_ismapped())
                     self.assertGreater(view.canvas.get_tk_widget().winfo_height(), 70)
                     for tab in range(2):
                         view.input_tabs.select(tab)
                         root.update()
-                        self.assertGreater(view.analysis_text.winfo_height(), 80)
+                        self.assertEqual(view.job_check.winfo_height(), view.resumes_box.winfo_height())
                         for parent in [view.job_check, view.resumes_box, view.overview]:
                             def check_children(widget):
                                 for child in widget.winfo_children():
@@ -151,6 +213,43 @@ class DesktopLayoutTests(unittest.TestCase):
                                     self.assertLessEqual(child.winfo_rooty() + child.winfo_height(), parent.winfo_rooty() + parent.winfo_height() + 1)
                                     check_children(child)
                             check_children(parent)
+                result = {
+                    'state': 'recommended', 'summary': 'Supported', 'job': {'roles': ['full stack']},
+                    'alternatives': [],
+                    'candidates': [
+                        {'name': 'Mobile', 'roles': ['mobile'], 'confirmed_roles': [],
+                         'compatibility': -1, 'project_overlap': ['kotlin'], 'gaps': ['Missing: web'],
+                         'rank': (-1, 0, 0, 0, 0, 0), 'evidence': []},
+                        {'name': 'Full Stack', 'roles': ['full stack'], 'confirmed_roles': [],
+                         'compatibility': 2, 'project_overlap': ['react', 'sql'], 'gaps': [],
+                         'rank': (2, 1, 1, 1, 1, 0), 'evidence': []},
+                    ],
+                }
+                view.set_analysis('Recommended: Full Stack', result)
+                for width, height in [(900, 760), (1100, 760), (1400, 900)]:
+                    root.geometry(f'{width}x{height}+10000+10000')
+                    root.update()
+                    self.assertFalse(view.analysis_empty.winfo_ismapped())
+                    self.assertGreater(view.analysis_text.winfo_height(), 40)
+                    self.assertEqual(int(view.results.cget('height')), 4)
+                    self.assertLessEqual(abs(
+                        (view.analysis_frame.winfo_rooty() + view.analysis_frame.winfo_height()) -
+                        (view.overview.winfo_rooty() + view.overview.winfo_height())), 1)
+                    for panel in [view.job_check, view.history_label, view.analysis_frame,
+                                  view.resumes_box, view.overview]:
+                        self.assertLessEqual(panel.winfo_rooty() + panel.winfo_height(),
+                                             root.winfo_rooty() + height)
+                rows = view.comparison_table.get_children()
+                self.assertEqual(view.comparison_table.item(rows[0], 'values')[0], 'Full Stack')
+                self.assertEqual(view.comparison_table.item(rows[0], 'values')[3], 'Best fit')
+                self.assertEqual(view.comparison_table.item(rows[1], 'values')[3], 'Role mismatch')
+                view.analysis_tabs.select(1)
+                root.update()
+                self.assertFalse(view.comparison_scroll_x.winfo_ismapped())
+                view.show_job_tags({'roles': ['full stack'], 'required': [
+                    {'skills': ['react', 'spring boot', 'sql']}], 'skills': ['react', 'spring boot', 'sql', 'aws']})
+                self.assertEqual([child.cget('text') for child in view.job_tags.winfo_children()],
+                                 ['Full Stack', 'React', 'Spring Boot', 'Sql'])
         finally:
             root.destroy()
             db.close()

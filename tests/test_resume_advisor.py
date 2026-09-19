@@ -8,6 +8,76 @@ from visualization.Workbench import format_assessment
 
 
 class ResumeAdvisorTests(unittest.TestCase):
+    def test_company_and_benefits_are_not_requirements(self):
+        job = '''Backend Engineer
+About Example
+We believe strong partnerships matter.
+The Role
+Build Python backend APIs aligned with business requirements.
+What You Bring
+Python required.
+What's in it for you
+Health benefits and strong community partnerships.
+Please note
+Candidates must be legally eligible to work in Canada.'''
+        profile = job_profile(job)
+        sources = ' '.join(item['source'] for item in profile['required'])
+        self.assertNotIn('partnerships', sources)
+        self.assertNotIn('benefits', sources)
+        self.assertIn('Python required', sources)
+        self.assertIn('legally eligible', sources)
+        self.assertEqual(profile['roles'], ['backend'])
+
+    def test_summary_gaps_are_numbered_separate_lines(self):
+        output = format_assessment({'state': 'provisional', 'file': 'R.txt', 'summary': 'Review',
+            'job': {'roles': ['backend'], 'skills': ['python', 'sql']},
+            'candidates': [{'roles': ['sales'], 'project_overlap': ['python'],
+                            'gaps': ['First concern', 'Second concern']}]})
+        self.assertIn('1. First concern\n2. Second concern', output)
+        self.assertIn('Python, Sql', output)
+        self.assertNotIn('Sales', output)
+
+    def test_five_resume_tracks_with_neutral_names_and_reversed_order(self):
+        resumes = [
+            ('A.txt', 'Built React TypeScript web interfaces and Python SQL backend APIs.'),
+            ('B.txt', 'Built C++ backend services using Linux.'),
+            ('C.txt', 'Built test automation and regression testing using Python Playwright.'),
+            ('D.txt', 'Built Java Spring Boot backend APIs using SQL.'),
+            ('E.txt', 'Built Flutter Android mobile applications using Kotlin.'),
+        ]
+        cases = [
+            ('Full Stack Developer\nBuild React TypeScript web interfaces and Python SQL APIs.', 'A.txt'),
+            ('Software Engineer\nBuild C++ backend services using Linux.', 'B.txt'),
+            ('DevOps Software Quality Automation Tools Engineer\nBuild test automation using Python Playwright.', 'C.txt'),
+            ('Java Developer\nBuild Java Spring Boot backend APIs using SQL.', 'D.txt'),
+            ('Mobile Developer\nBuild Flutter Android mobile applications using Kotlin.', 'E.txt'),
+        ]
+        for job, expected in cases:
+            for order in (resumes, list(reversed(resumes))):
+                with self.subTest(job=job, reversed=order is not resumes):
+                    result = local_recommendation(job, order)
+                    self.assertEqual(result['file'], expected)
+                    self.assertEqual(result['state'], 'recommended')
+
+    def test_qa_title_overrides_product_full_stack_label(self):
+        job = 'Full Stack QA Engineer\nBuild test automation using Python Playwright. Test full-stack applications.'
+        result = local_recommendation(job, [
+            ('Web.txt', 'Built full-stack applications using Python Playwright.'),
+            ('Testing.txt', 'Built test automation using Python Playwright.')])
+        self.assertEqual(result['job']['roles'], ['qa'])
+        self.assertEqual(result['file'], 'Testing.txt')
+
+    def test_routine_tests_do_not_create_second_direction(self):
+        profile = job_profile('Software Developer\nBuild Python backend APIs. Build automated tests using pytest.')
+        self.assertEqual(profile['roles'], ['backend'])
+
+    def test_multiple_directions_prefer_complete_delivery_coverage(self):
+        result = local_recommendation('Full Stack / Mobile Developer\nBuild full-stack and mobile applications using Python Flutter.', [
+            ('Partial.txt', 'Built mobile applications using Python Flutter.'),
+            ('Both.txt', 'Built full-stack applications using Python. Built mobile applications using Flutter.')])
+        self.assertEqual(result['file'], 'Both.txt')
+        self.assertEqual(result['candidates'][0]['role_coverage'], 1)
+
     def test_skills_do_not_match_inside_other_words(self):
         self.assertEqual(detected_skills('JavaScript interesting excellent'), {'javascript'})
 
@@ -46,8 +116,7 @@ class ResumeAdvisorTests(unittest.TestCase):
             'modification_needed': False, 'recommendation': 'Skip',
             'summary': 'Missing required experience.', 'source': 'Local match'
         })
-        self.assertIn('Provisional choice: FullStack.pdf', output)
-        self.assertIn('Local assessment', output)
+        self.assertIn('Recommended resume: FullStack.pdf', output)
         self.assertNotIn('Modify:', output)
         self.assertNotIn('Priority:', output)
         self.assertIn('Missing required experience.', output)
