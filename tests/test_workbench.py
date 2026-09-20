@@ -239,6 +239,8 @@ class DesktopLayoutTests(unittest.TestCase):
                     self.assertLessEqual(abs(view.left.winfo_width() - view.right.winfo_width()), 1)
                     self.assertEqual(view.job_check.winfo_height(), view.resumes_box.winfo_height())
                     self.assertEqual(view.job_check.winfo_height(), 240)
+                    self.assertEqual(view.axes.get_title(), '')
+                    self.assertIn('–', view.range_caption.cget('text'))
                     self.assertLessEqual(abs(
                         (view.analysis_frame.winfo_rooty() + view.analysis_frame.winfo_height()) -
                         (view.overview.winfo_rooty() + view.overview.winfo_height())), 1)

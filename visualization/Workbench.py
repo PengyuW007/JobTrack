@@ -825,7 +825,6 @@ class Workbench:
             pct = count / counts[0] * 100 if counts[0] else 0
             self.axes.text(bar.get_width() + maximum * .02, bar.get_y() + bar.get_height() / 2,
                            f"{count}  {pct:.0f}%", va="center", color=UI["text"], fontsize=9)
-        self.axes.set_title(f"{start}  –  {end}", color=UI["text"], fontsize=10, pad=8)
         self.range_caption.configure(text=f"{start} – {end}")
         self.canvas.draw_idle()
 
