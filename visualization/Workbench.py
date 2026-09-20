@@ -93,6 +93,92 @@ def review_description_blocks(description):
     return blocks
 
 
+_REGION_CODES = {
+    "alberta": "AB", "british columbia": "BC", "manitoba": "MB",
+    "new brunswick": "NB", "newfoundland and labrador": "NL",
+    "northwest territories": "NT", "nova scotia": "NS", "nunavut": "NU",
+    "ontario": "ON", "prince edward island": "PE", "quebec": "QC",
+    "saskatchewan": "SK", "yukon": "YT",
+}
+_REGION_CODES.update({code.casefold(): code for code in _REGION_CODES.values()})
+_COUNTRY_LABELS = {"canada", "ca", "united states", "united states of america", "usa", "us"}
+_ADDRESS_SUFFIX = re.compile(
+    r"\b(?:street|st|avenue|ave|road|rd|boulevard|blvd|drive|dr|lane|ln|"
+    r"court|ct|highway|hwy|parkway|pkwy|place|pl|way)\b\.?(?:\s|,|$)", re.IGNORECASE,
+)
+
+
+def compact_job_location(location):
+    """Return a North American city/region label and an optional street address."""
+    raw = " ".join((location or "").split()).split(" / ", 1)[0]
+    if not raw:
+        return "", ""
+    breadcrumb = bool(re.search(r"\s+-\s+", raw))
+    parts = re.split(r"\s+-\s+", raw) if breadcrumb else re.split(r"\s*,\s*", raw)
+    cleaned = []
+    for part in parts:
+        part = re.sub(r",?\s*(?:Canada|United States(?: of America)?|USA|US)\s*$", "", part,
+                      flags=re.IGNORECASE).strip(" ,-·")
+        if part and part.casefold() not in _COUNTRY_LABELS | {"amer", "north america"}:
+            cleaned.append(part)
+    if not cleaned:
+        return "", ""
+    region = next((_REGION_CODES[item.casefold()] for item in cleaned
+                   if item.casefold() in _REGION_CODES), "")
+    address = next((item for item in cleaned
+                    if any(char.isdigit() for char in item) or _ADDRESS_SUFFIX.search(item)), "")
+    candidates = [item for item in cleaned
+                  if item != address and item.casefold() not in _REGION_CODES]
+    city = candidates[-1] if candidates else ""
+    place = ", ".join(value for value in (city, region) if value)
+    return place, address
+
+
+def format_posting_meta(posting):
+    """Keep the main summary to company, city/region, mode, and useful address."""
+    place, address = compact_job_location(posting.location)
+    mode = {"onsite": "On-site", "on site": "On-site", "on-site": "On-site",
+            "hybrid": "Hybrid", "remote": "Remote"}.get(
+                (posting.work_mode or "").strip().casefold(), posting.work_mode or "")
+    parts = [posting.company, place]
+    if mode:
+        parts.append(f"{mode} — {address}" if address and mode != "Remote" else mode)
+    elif address:
+        parts.append(address)
+    return " · ".join(value for value in parts if value)
+
+
+_SKILL_LABELS = {
+    "api": "API", "aws": "AWS", "c#": "C#", "c++": "C++", "ci/cd": "CI/CD",
+    "css": "CSS", "dynamodb": "DynamoDB", "gcp": "GCP", "graphql": "GraphQL",
+    "html": "HTML", "http": "HTTP", "https": "HTTPS", "ios": "iOS",
+    "javascript": "JavaScript", "json": "JSON", "macos": "macOS",
+    "mongodb": "MongoDB", "mysql": "MySQL", ".net": ".NET",
+    "next.js": "Next.js", "node.js": "Node.js", "nosql": "NoSQL",
+    "oauth": "OAuth", "php": "PHP", "postgresql": "PostgreSQL",
+    "react native": "React Native", "rest": "REST", "sql": "SQL",
+    "typescript": "TypeScript", "xml": "XML",
+}
+
+
+def skill_label(skill):
+    value = str(skill).strip()
+    return _SKILL_LABELS.get(value.casefold(), value.title())
+
+
+def format_technical_terms(text):
+    """Apply product-standard casing to recognized technologies in UI copy."""
+    output = str(text)
+    for value, label in sorted(_SKILL_LABELS.items(), key=lambda item: len(item[0]), reverse=True):
+        output = re.sub(r"(?<!\w)" + re.escape(value) + r"(?!\w)", label, output,
+                        flags=re.IGNORECASE)
+    return output
+
+
+def role_tag_label(role):
+    return {"qa": "QA"}.get(str(role).casefold(), str(role).title())
+
+
 def format_assessment(result):
     labels = {"recommended": "Recommended resume", "provisional": "Resume to review",
               "skip": "Skip this job",
@@ -108,13 +194,13 @@ def format_assessment(result):
         lines.append(f"{label}: {' / '.join(closest)}")
     if compared:
         lines.append(f"{compared} resumes compared")
-    lines.append(result["summary"])
+    lines.append(format_technical_terms(result["summary"]))
     job = result.get("job", {})
     if result.get("candidates") and state not in {"none", "insufficient"}:
         best = result["candidates"][0]
         roles = job.get("roles") or []
-        core = ", ".join(skill.title() for skill in job.get("skills", [])) or "No core skills identified"
-        gaps = list(dict.fromkeys(best.get("gaps", [])))
+        core = ", ".join(skill_label(skill) for skill in job.get("skills", [])) or "No core skills identified"
+        gaps = [format_technical_terms(gap) for gap in dict.fromkeys(best.get("gaps", []))]
         lines.extend(["", "Responsibilities", role_summary(roles),
                       "", "Core skills", core, "", "To verify"])
         lines.extend([f"{index}. {gap}" for index, gap in enumerate(gaps, 1)]
@@ -600,7 +686,7 @@ class Workbench:
         for index, candidate in enumerate(candidates):
             primary = candidate.get("primary_direction")
             role = self._role_summary([primary]) if primary else "Direction unclear"
-            evidence = " · ".join(skill.title() for skill in candidate.get("project_overlap", [])) or "No project evidence"
+            evidence = " · ".join(skill_label(skill) for skill in candidate.get("project_overlap", [])) or "No project evidence"
             gaps = candidate.get("gaps", [])
             if gaps:
                 gap = gaps[0].replace("Core skills without project evidence: ", "Missing: ")
@@ -609,6 +695,7 @@ class Workbench:
                     gap = "Verify: " + gap
                 if len(gap) > 32:
                     gap = gap[:29].rstrip() + "…"
+                gap = format_technical_terms(gap)
                 evidence += "\n" + gap
             if candidate.get("compatibility", 0) < 0:
                 choice = "Role mismatch"
@@ -634,14 +721,14 @@ class Workbench:
         tags = []
         roles = job.get("roles", [])
         if roles:
-            tags.append(" / ".join(role.title() for role in roles))
+            tags.append(" / ".join(role_tag_label(role) for role in roles))
         required = [skill for requirement in job.get("required", [])
                     for skill in requirement.get("skills", [])]
         for skill in required + job.get("skills", []):
-            label = skill.title()
+            label = skill_label(skill)
             if label not in tags:
                 tags.append(label)
-            if len(tags) == 4:
+            if len(tags) == 6:
                 break
         for column, label in enumerate(tags):
             ttk.Label(self.job_tags, text=label, style="Tag.TLabel").grid(
@@ -992,16 +1079,15 @@ class Workbench:
                            tabs=(30,))
         if self.posting.position:
             text.insert("end", self.posting.position + "\n", "title")
-        metadata = " · ".join(value for value in (self.posting.company,
-                              self.posting.location, self.posting.work_mode) if value)
+        metadata = format_posting_meta(self.posting)
         if metadata:
             text.insert("end", metadata + "\n", "meta")
         description = self.posting.description or "No job description retrieved. Use Paste JD."
         for kind, content in review_description_blocks(description):
             if kind == "bullet":
-                text.insert("end", "•\t" + content + "\n", "bullet")
+                text.insert("end", "•\t" + format_technical_terms(content) + "\n", "bullet")
             else:
-                text.insert("end", content + "\n", kind)
+                text.insert("end", format_technical_terms(content) + "\n", kind)
         text.configure(state="disabled")
         scroll = ttk.Scrollbar(body, command=text.yview)
         text.configure(yscrollcommand=scroll.set)
@@ -1049,8 +1135,7 @@ class Workbench:
         self.posting = posting
         self._set_job_details_visible(True)
         self.job_title.set(posting.position or "Job page unavailable")
-        self.job_meta.set(" · ".join(value for value in
-                          (posting.company, posting.location, posting.work_mode) if value))
+        self.job_meta.set(format_posting_meta(posting))
         self.show_job_tags()
         self.input_status.set("JD ready" if posting.description else "JD unavailable")
         self.review_button.configure(state="normal" if posting.description else "disabled")

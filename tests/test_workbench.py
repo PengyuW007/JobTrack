@@ -6,7 +6,9 @@ from unittest.mock import MagicMock, patch
 
 from business.DuplicateService import Posting
 from persistence.DataAccess import DataAccess
-from visualization.Workbench import Workbench, review_description_blocks
+from visualization.Workbench import (Workbench, compact_job_location, format_posting_meta,
+                                     format_technical_terms, review_description_blocks,
+                                     role_tag_label, skill_label)
 
 
 class WorkbenchTests(unittest.TestCase):
@@ -183,6 +185,26 @@ class WorkbenchTests(unittest.TestCase):
         self.assertLess(blocks.index(('heading', 'Responsibilities')),
                         blocks.index(('heading', 'Minimum Qualifications')))
 
+    def test_job_summary_uses_compact_north_american_location(self):
+        posting = Posting(
+            'https://example.com/job', 'Autodesk Canada Co.', 'Software Engineer', 'Build APIs',
+            location='AMER - Canada - Ontario - Toronto - University Ave, Canada',
+            work_mode='Hybrid',
+        )
+        self.assertEqual(compact_job_location(posting.location), ('Toronto, ON', 'University Ave'))
+        self.assertEqual(format_posting_meta(posting),
+                         'Autodesk Canada Co. · Toronto, ON · Hybrid — University Ave')
+        posting.work_mode = 'Remote'
+        self.assertEqual(format_posting_meta(posting),
+                         'Autodesk Canada Co. · Toronto, ON · Remote')
+
+    def test_skill_labels_preserve_technology_casing(self):
+        self.assertEqual([skill_label(value) for value in ('aws', 'css', 'graphql', 'sql', 'javascript')],
+                         ['AWS', 'CSS', 'GraphQL', 'SQL', 'JavaScript'])
+        self.assertEqual(format_technical_terms('aws, graphql, node.js, mysql and ci/cd'),
+                         'AWS, GraphQL, Node.js, MySQL and CI/CD')
+        self.assertEqual(role_tag_label('qa'), 'QA')
+
 
 class DesktopLayoutTests(unittest.TestCase):
     def test_panels_fit_supported_desktop_sizes_without_page_scrolling(self):
@@ -301,9 +323,10 @@ class DesktopLayoutTests(unittest.TestCase):
                 root.update()
                 self.assertFalse(view.comparison_scroll_x.winfo_ismapped())
                 view.show_job_tags({'roles': ['full stack'], 'required': [
-                    {'skills': ['react', 'spring boot', 'sql']}], 'skills': ['react', 'spring boot', 'sql', 'aws']})
+                    {'skills': ['react', 'spring boot', 'sql']}],
+                    'skills': ['react', 'spring boot', 'sql', 'aws', 'css', 'graphql']})
                 self.assertEqual([child.cget('text') for child in view.job_tags.winfo_children()],
-                                 ['Full Stack', 'React', 'Spring Boot', 'Sql'])
+                                 ['Full Stack', 'React', 'Spring Boot', 'SQL', 'AWS', 'CSS'])
         finally:
             root.destroy()
             db.close()

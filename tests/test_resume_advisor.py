@@ -129,7 +129,7 @@ Candidates must be legally eligible to work in Canada.'''
             'candidates': [{'roles': ['sales'], 'project_overlap': ['python'],
                             'gaps': ['First concern', 'Second concern']}]})
         self.assertIn('1. First concern\n2. Second concern', output)
-        self.assertIn('Python, Sql', output)
+        self.assertIn('Python, SQL', output)
         self.assertNotIn('Sales', output)
 
     def test_five_resume_tracks_with_neutral_names_and_reversed_order(self):
