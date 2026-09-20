@@ -12,7 +12,7 @@ from matplotlib.figure import Figure
 
 from business.AnalyticsService import AnalyticsService
 from business.DuplicateService import DuplicateService, Posting, fetch_posting
-from business.ResumeAdvisor import recommend, _HEADINGS
+from business.ResumeAdvisor import recommend
 from persistence.DataAccessJob import DataAccessJob
 from visualization.DateRangeDialog import DateRangeDialog
 
@@ -31,6 +31,66 @@ UI = {
     "warning": "#a35d00",
     "danger": "#b42318",
 }
+
+_REVIEW_HEADINGS = (
+    "Position Overview", "Job Overview", "Job Description", "About the Position",
+    "About the Role", "The Role", "What You Will Do", "What You'll Do",
+    "What You’ll Do", "Responsibilities", "Your Responsibilities",
+    "Minimum Qualifications", "Basic Qualifications", "Required Qualifications",
+    "Qualifications", "What You Will Need", "What You'll Need", "What You’ll Need",
+    "Preferred Qualifications", "Preferred Skills", "Nice to Have", "Bonus Points",
+    "What We Offer", "Benefits", "Salary Transparency", "Compensation",
+    "About Us", "About the Company",
+)
+_REVIEW_DYNAMIC_HEADING = r"Learn More About [A-Z][\w&.-]*(?: [A-Z][\w&.-]*){0,3}"
+_REVIEW_HEADING_PATTERN = re.compile(
+    r"(?<!\w)(" + "|".join(re.escape(label) for label in sorted(
+        _REVIEW_HEADINGS, key=len, reverse=True
+    )) + "|" + _REVIEW_DYNAMIC_HEADING + r")\s*[!:]?(?=\s|$)",
+    re.IGNORECASE,
+)
+_REVIEW_BULLET_HEADINGS = {
+    "what you will do", "what you'll do", "what you’ll do", "responsibilities",
+    "your responsibilities", "minimum qualifications", "basic qualifications",
+    "required qualifications", "qualifications", "what you will need",
+    "what you'll need", "what you’ll need", "preferred qualifications",
+    "preferred skills", "nice to have", "bonus points", "benefits",
+}
+
+
+def _review_sentences(text):
+    """Split collapsed job-board prose without breaking common abbreviations."""
+    return [part.strip() for part in re.split(
+        r"(?<=[.!?])\s+(?=(?:[A-Z][a-z]|I\b|We\b|You\b|The\b))", text
+    ) if part.strip()]
+
+
+def review_description_blocks(description):
+    """Return display-only sections for a readable JD review window."""
+    text = re.sub(r"\r\n?", "\n", description or "")
+    text = re.sub(r"[ \t]+", " ", text)
+    text = _REVIEW_HEADING_PATTERN.sub(lambda match: f"\n{match.group(1).strip()}\n", text)
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    heading_names = {label.casefold() for label in _REVIEW_HEADINGS}
+    blocks, current_heading = [], ""
+    for line in lines:
+        normalized = line.rstrip(":").strip()
+        if normalized.casefold() in heading_names or re.fullmatch(
+                _REVIEW_DYNAMIC_HEADING, normalized, re.IGNORECASE):
+            current_heading = normalized.casefold()
+            blocks.append(("heading", normalized))
+            continue
+        explicit_bullet = re.match(r"^(?:[•*\-]|\d+[.)])\s+(.*)", line)
+        content = explicit_bullet.group(1).strip() if explicit_bullet else line
+        sentences = _review_sentences(content)
+        if explicit_bullet or current_heading in _REVIEW_BULLET_HEADINGS:
+            blocks.extend(("bullet", sentence) for sentence in sentences)
+        else:
+            # Two sentences per paragraph keeps narrative sections readable
+            # without turning an overview into a long list of single lines.
+            blocks.extend(("paragraph", " ".join(sentences[index:index + 2]))
+                          for index in range(0, len(sentences), 2))
+    return blocks
 
 
 def format_assessment(result):
@@ -142,6 +202,7 @@ class Workbench:
         # backgrounds but may still apply the foreground, making text invisible.
         style.configure("Primary.TButton", font=("Segoe UI", 9, "bold"), padding=(10, 5))
         style.configure("TButton", padding=(8, 4))
+        style.configure("Compact.TButton", padding=(5, 2), font=("Segoe UI", 9))
         style.configure("TNotebook", background=UI["surface"], borderwidth=0)
         style.configure("TNotebook.Tab", padding=(11, 5))
         style.configure("Treeview", rowheight=27, background=UI["surface"],
@@ -225,7 +286,7 @@ class Workbench:
         self.input_tabs.add(jd_input, text="Paste JD")
         self.input_tabs.bind("<<NotebookTabChanged>>", self._fit_input_tab)
         url_input.columnconfigure(0, weight=1)
-        jd_input.columnconfigure(1, weight=1)
+        jd_input.columnconfigure(0, weight=1)
         entry = ttk.Entry(url_input, textvariable=self.url)
         entry.grid(row=0, column=0, sticky="ew")
         self.url_entry = entry
@@ -233,42 +294,45 @@ class Workbench:
         entry.bind("<Return>", lambda _event: self.lookup_url())
         self.clear_button = ttk.Button(url_input, text="Clear", command=self.clear_job, width=6)
         self.clear_button.grid(row=0, column=1, padx=(6, 0))
-        self.jd_title, self.jd_company = tk.StringVar(), tk.StringVar()
-        for row, (label, value) in enumerate((("Title", self.jd_title), ("Company", self.jd_company))):
-            ttk.Label(jd_input, text=label).grid(row=row, column=0, sticky="w", padx=(0, 6))
-            ttk.Entry(jd_input, textvariable=value).grid(row=row, column=1, sticky="ew", pady=1)
-        self.jd_text = tk.Text(jd_input, height=2, width=1, wrap="word")
-        self.jd_text.grid(row=2, column=0, columnspan=2, sticky="ew", pady=3)
-        jd_scroll = ttk.Scrollbar(jd_input, orient="vertical", command=self.jd_text.yview)
-        jd_scroll.grid(row=2, column=2, sticky="ns")
-        self.jd_text.configure(yscrollcommand=jd_scroll.set)
-        ttk.Button(jd_input, text="Compare resumes", command=self.lookup_jd).grid(row=3, column=0, columnspan=2, sticky="e")
+        self.jd_title, self.jd_company, self.jd_description = tk.StringVar(), tk.StringVar(), tk.StringVar()
+        self.pasted_jd_summary = tk.StringVar(value="No pasted JD yet")
+        self.pasted_jd_summary_label = ttk.Label(
+            jd_input, textvariable=self.pasted_jd_summary, foreground=UI["muted"], anchor="w"
+        )
+        self.pasted_jd_summary_label.grid(row=0, column=0, sticky="ew")
+        self.open_jd_editor_button = ttk.Button(
+            jd_input, text="Add JD", command=self.open_jd_editor, style="Primary.TButton"
+        )
+        self.open_jd_editor_button.grid(row=0, column=1, sticky="e", padx=(8, 0))
         self.root.after_idle(self._fit_input_tab)
         self.job_prompt = ttk.Label(box, text="Paste a job URL from any public platform",
                                     font=("Segoe UI", 10, "bold"))
         self.job_prompt.grid(row=2, column=0, columnspan=2, sticky="w", pady=(9, 0))
         self.job_summary = ttk.Frame(box)
         self.job_summary.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(8, 0))
-        self.job_summary.columnconfigure(2, weight=1)
         self.job_summary.columnconfigure(0, weight=1)
-        self.job_summary.columnconfigure(1, weight=1)
         self.job_title = tk.StringVar(value="Paste a job URL from any public platform")
         self.job_title_label = ttk.Label(self.job_summary, textvariable=self.job_title,
                                          font=("Segoe UI", 10, "bold"), wraplength=220)
         self.job_title_label.grid(row=0, column=0, sticky="w")
-        self.job_meta = tk.StringVar()
-        self.job_meta_label = ttk.Label(self.job_summary, textvariable=self.job_meta,
-                                        foreground=UI["muted"], wraplength=160)
-        self.job_meta_label.grid(row=0, column=1, sticky="w", padx=(8, 0))
         self.lookup_status = tk.StringVar()
         self.input_status = tk.StringVar()
         self.lookup_status_label = ttk.Label(self.job_summary, textvariable=self.input_status,
                                              foreground=UI["success"])
-        self.lookup_status_label.grid(row=0, column=2, sticky="e", padx=(8, 0))
+        self.lookup_status_label.grid(row=0, column=1, sticky="e", padx=(8, 0))
+        self.job_meta = tk.StringVar()
+        self.job_meta_label = ttk.Label(
+            self.job_summary, textvariable=self.job_meta, foreground=UI["muted"], anchor="w",
+            justify="left", wraplength=420,
+        )
+        self.job_meta_label.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(2, 0))
         self.job_tags = ttk.Frame(self.job_summary)
-        self.job_tags.grid(row=1, column=0, columnspan=2, sticky="w", pady=(5, 0))
-        self.review_button = ttk.Button(self.job_summary, text="Review JD", command=self.review_jd)
-        self.review_button.grid(row=1, column=2, sticky="e", pady=(5, 0))
+        self.job_tags.grid(row=2, column=0, sticky="w", pady=(5, 0))
+        self.review_button = ttk.Button(
+            self.job_summary, text="Review JD", command=self.review_jd,
+            width=9, style="Compact.TButton",
+        )
+        self.review_button.grid(row=2, column=1, sticky="e", pady=(4, 0))
         analysis = ttk.LabelFrame(self.left, text="Resume choice", padding=8, style="Panel.TLabelframe")
         analysis.grid(row=2, column=0, sticky="nsew")
         analysis.columnconfigure(0, weight=1)
@@ -438,8 +502,10 @@ class Workbench:
     def _set_top_panel_heights(self):
         if not all(hasattr(self, name) for name in ("input_tabs", "job_check", "resumes_box")):
             return
-        selected_index = self.input_tabs.index(self.input_tabs.select())
-        height = 278 if selected_index == 1 else 220
+        # Keep the paired top panels compact so their unused height is available
+        # to Resume choice and Application overview below. Both input modes and
+        # four visible resume rows fit without changing the surrounding layout.
+        height = 240
         for panel in (self.job_check, self.resumes_box):
             panel.configure(height=height)
             panel.grid_propagate(False)
@@ -481,12 +547,10 @@ class Workbench:
 
     def _resize_left_content(self, event):
         wrap = max(230, event.width - 55)
-        for label in (self.model_status_label, self.job_title_label, self.job_meta_label, self.lookup_status_label):
-            label.configure(wraplength=wrap)
-        # Title, company/location and status share a row, not the full panel width.
-        summary_wrap = max(70, (event.width - 150) // 2)
-        self.job_title_label.configure(wraplength=summary_wrap)
-        self.job_meta_label.configure(wraplength=summary_wrap)
+        self.model_status_label.configure(wraplength=wrap)
+        self.job_title_label.configure(wraplength=max(170, event.width - 180))
+        self.lookup_status_label.configure(wraplength=120)
+        self.job_meta_label.configure(wraplength=max(230, event.width - 65))
         self.details_label.configure(wraplength=wrap)
         self.history_status_label.configure(wraplength=wrap)
         self._resize_table(self.results, (("date", .19), ("channel", .24), ("company", .24), ("position", .33)))
@@ -531,7 +595,7 @@ class Workbench:
         if not result or not result.get("candidates"):
             self.comparison_table.insert("", "end", values=("No comparison available yet.", "", "", ""))
             return
-        candidates = list(result["candidates"])
+        candidates = sorted(result["candidates"], key=lambda item: item.get("rank", ()), reverse=True)
         alternatives = set(result.get("alternatives", []))
         for index, candidate in enumerate(candidates):
             primary = candidate.get("primary_direction")
@@ -802,12 +866,106 @@ class Workbench:
             self._clear_job_result()
 
     def lookup_jd(self):
-        description = self.jd_text.get("1.0", "end").strip()
+        description = self.jd_description.get().strip()
         if not description:
-            self.set_analysis("Paste the full JD to compare resumes.")
+            self.open_jd_editor()
             return
         self._clear_job_result()
         self.show_posting(Posting("", self.jd_company.get().strip(), self.jd_title.get().strip(), description))
+
+    def _refresh_pasted_jd_entry(self):
+        description = self.jd_description.get().strip()
+        if not description:
+            self.pasted_jd_summary.set("No pasted JD yet")
+            self.pasted_jd_summary_label.configure(foreground=UI["muted"])
+            self.open_jd_editor_button.configure(text="Add JD", style="Primary.TButton")
+            return
+        title = self.jd_title.get().strip() or "Pasted job description"
+        company = self.jd_company.get().strip()
+        self.pasted_jd_summary.set(f"{title} · {company}" if company else title)
+        self.pasted_jd_summary_label.configure(foreground=UI["text"])
+        self.open_jd_editor_button.configure(text="Edit JD", style="TButton")
+
+    def open_jd_editor(self):
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Paste job description")
+        dialog.transient(self.root)
+        self.root.update_idletasks()
+        parent_width = max(1, self.root.winfo_width())
+        parent_height = max(1, self.root.winfo_height())
+        width = min(760, max(560, parent_width - 100))
+        height = min(600, max(440, parent_height - 120))
+        x = self.root.winfo_rootx() + max(20, (parent_width - width) // 2)
+        y = self.root.winfo_rooty() + max(20, (parent_height - height) // 2)
+        dialog.geometry(f"{width}x{height}+{x}+{y}")
+        dialog.minsize(min(560, width), min(440, height))
+        dialog.maxsize(max(560, parent_width - 40), max(440, parent_height - 40))
+        dialog.columnconfigure(0, weight=1)
+        dialog.rowconfigure(2, weight=1)
+
+        header = ttk.Frame(dialog, padding=(16, 14, 16, 10))
+        header.grid(row=0, column=0, sticky="ew")
+        ttk.Label(header, text="Paste job description", font=("Segoe UI", 15, "bold")).grid(
+            row=0, column=0, sticky="w"
+        )
+        ttk.Label(
+            header,
+            text="Complete the form, then analyze it using the same workflow as a job URL.",
+            foreground=UI["muted"],
+        ).grid(row=1, column=0, sticky="w", pady=(3, 0))
+
+        fields = ttk.Frame(dialog, padding=(16, 4, 16, 10))
+        fields.grid(row=1, column=0, sticky="ew")
+        fields.columnconfigure(0, weight=1)
+        fields.columnconfigure(1, weight=1)
+        ttk.Label(fields, text="Title").grid(row=0, column=0, sticky="w", padx=(0, 6))
+        ttk.Label(fields, text="Company").grid(row=0, column=1, sticky="w", padx=(6, 0))
+        title_value = tk.StringVar(value=self.jd_title.get())
+        company_value = tk.StringVar(value=self.jd_company.get())
+        title_entry = ttk.Entry(fields, textvariable=title_value)
+        title_entry.grid(row=1, column=0, sticky="ew", padx=(0, 6), pady=(4, 0))
+        ttk.Entry(fields, textvariable=company_value).grid(
+            row=1, column=1, sticky="ew", padx=(6, 0), pady=(4, 0)
+        )
+
+        description = ttk.Frame(dialog, padding=(16, 0, 16, 0))
+        description.grid(row=2, column=0, sticky="nsew")
+        description.columnconfigure(0, weight=1)
+        description.rowconfigure(1, weight=1)
+        ttk.Label(description, text="Full job description").grid(row=0, column=0, columnspan=2, sticky="w")
+        editor = tk.Text(description, wrap="word", undo=True, padx=10, pady=8)
+        editor.grid(row=1, column=0, sticky="nsew", pady=(4, 0))
+        editor.insert("1.0", self.jd_description.get().strip())
+        scroll = ttk.Scrollbar(description, orient="vertical", command=editor.yview)
+        scroll.grid(row=1, column=1, sticky="ns", pady=(4, 0))
+        editor.configure(yscrollcommand=scroll.set)
+
+        actions = ttk.Frame(dialog, padding=(16, 12, 16, 14))
+        actions.grid(row=3, column=0, sticky="ew")
+        actions.columnconfigure(0, weight=1)
+        ttk.Label(actions, text="Analysis stays on this device", foreground=UI["muted"]).grid(
+            row=0, column=0, sticky="w"
+        )
+        ttk.Button(actions, text="Cancel", command=dialog.destroy).grid(row=0, column=1, padx=(0, 6))
+
+        def analyze_jd(_event=None):
+            full_description = editor.get("1.0", "end").strip()
+            if not full_description:
+                messagebox.showinfo("Paste job description", "Paste the job description before continuing.", parent=dialog)
+                return "break"
+            self.jd_title.set(title_value.get().strip())
+            self.jd_company.set(company_value.get().strip())
+            self.jd_description.set(full_description)
+            self._refresh_pasted_jd_entry()
+            dialog.destroy()
+            self.lookup_jd()
+            return "break"
+
+        ttk.Button(actions, text="Analyze JD", command=analyze_jd, style="Primary.TButton").grid(row=0, column=2)
+        dialog.bind("<Control-Return>", analyze_jd)
+        dialog.bind("<Command-Return>", analyze_jd)
+        (title_entry if not self.jd_description.get().strip() else editor).focus_set()
+        dialog.grab_set()
 
     def review_jd(self):
         if not self.posting:
@@ -839,18 +997,11 @@ class Workbench:
         if metadata:
             text.insert("end", metadata + "\n", "meta")
         description = self.posting.description or "No job description retrieved. Use Paste JD."
-        for line in description.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            # Reuse the assessment's section vocabulary without changing JD text.
-            if _HEADINGS.fullmatch(line) or (len(line) < 90 and line.endswith(":")):
-                text.insert("end", line + "\n", "heading")
-            elif re.match(r"^(?:[•*\-]|\d+[.)])\s+", line):
-                marker, content = line.split(maxsplit=1)
-                text.insert("end", marker + "\t" + content + "\n", "bullet")
+        for kind, content in review_description_blocks(description):
+            if kind == "bullet":
+                text.insert("end", "•\t" + content + "\n", "bullet")
             else:
-                text.insert("end", line + "\n", "paragraph")
+                text.insert("end", content + "\n", kind)
         text.configure(state="disabled")
         scroll = ttk.Scrollbar(body, command=text.yview)
         text.configure(yscrollcommand=scroll.set)
@@ -884,7 +1035,8 @@ class Workbench:
         self._clear_job_result()
         self.jd_title.set("")
         self.jd_company.set("")
-        self.jd_text.delete("1.0", "end")
+        self.jd_description.set("")
+        self._refresh_pasted_jd_entry()
 
     def _fetch_worker(self, version, url):
         try:

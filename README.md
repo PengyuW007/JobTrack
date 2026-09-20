@@ -73,7 +73,7 @@ When synchronization ends, the chart and the currently checked job's application
 ### Job check and duplicate detection
 
 - Accepts a complete job URL from LinkedIn, Indeed, or another public platform.
-- Also accepts a pasted JD with an optional title and company. History checking requires a URL or both company and title; missing identifiers are shown as unavailable rather than as a negative result.
+- Also accepts a pasted JD through a dedicated form with optional title and company fields and a large description editor. Select **Add JD** or **Edit JD**, then **Analyze JD** to build the job profile, check identifiable history, and compare enabled resumes. Cancel leaves the current draft and results unchanged. History checking requires a URL or both company and title; missing identifiers are shown as unavailable rather than as a negative result.
 - Starts automatically after a URL is pasted or Enter is pressed, and shows an analyzing state while the job page is being read.
 - Reads public `JobPosting` structured data when available.
 - Uses browser fallback for sites that require JavaScript.
@@ -232,7 +232,7 @@ Select **＋ Add resume** above the Resume table to add local files. Double-clic
 
 ### 3. Check a job
 
-Paste a complete public job URL into Job check. Analysis begins automatically, or select **Check**. If the retrieved description is missing or incomplete, use the **Paste JD** tab. **Review JD** shows the description used by assessment. JobTrack checks all imported application history and compares enabled resumes. Use **Clear** to remove the current inputs and result.
+Paste a complete public job URL into Job check and analysis begins automatically. If the retrieved description is missing or incomplete, use **Add JD** in the **Paste JD** tab, complete the independent form, and select **Analyze JD**. Reopen the form with **Edit JD** to revise the saved draft. **Review JD** shows the description used by assessment. JobTrack checks all imported application history and compares enabled resumes. Use **Clear** to remove the current inputs and result.
 
 ### 4. Review previous applications
 

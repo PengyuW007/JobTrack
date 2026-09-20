@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 from business.DuplicateService import Posting
 from persistence.DataAccess import DataAccess
-from visualization.Workbench import Workbench
+from visualization.Workbench import Workbench, review_description_blocks
 
 
 class WorkbenchTests(unittest.TestCase):
@@ -148,6 +148,41 @@ class WorkbenchTests(unittest.TestCase):
         self.view._set_job_details_visible.assert_called_once_with(True)
         thread.return_value.start.assert_called_once()
 
+    def test_saved_pasted_jd_changes_add_action_to_edit(self):
+        self.view.jd_description = MagicMock()
+        self.view.jd_description.get.return_value = 'Complete job description'
+        self.view.jd_title = MagicMock()
+        self.view.jd_title.get.return_value = 'Software Engineer'
+        self.view.jd_company = MagicMock()
+        self.view.jd_company.get.return_value = 'Example Labs'
+        self.view.pasted_jd_summary = MagicMock()
+        self.view.pasted_jd_summary_label = MagicMock()
+        self.view.open_jd_editor_button = MagicMock()
+        self.view._refresh_pasted_jd_entry()
+        self.view.pasted_jd_summary.set.assert_called_once_with('Software Engineer · Example Labs')
+        self.view.open_jd_editor_button.configure.assert_called_once_with(text='Edit JD', style='TButton')
+
+    def test_review_jd_formats_collapsed_headings_and_section_items(self):
+        description = (
+            'Job Requisition ID # 26WD Position Overview Build reliable products. '
+            'Work with customers. Responsibilities Design scalable APIs. Maintain the platform. '
+            'Minimum Qualifications 2-3 years of experience. Experience with Python. '
+            'Preferred Qualifications AWS experience. Learn More About Autodesk! '
+            'We create software for designers. Salary Transparency The expected range is listed.'
+        )
+        blocks = review_description_blocks(description)
+        self.assertIn(('heading', 'Position Overview'), blocks)
+        self.assertIn(('heading', 'Responsibilities'), blocks)
+        self.assertIn(('heading', 'Minimum Qualifications'), blocks)
+        self.assertIn(('heading', 'Preferred Qualifications'), blocks)
+        self.assertIn(('heading', 'Learn More About Autodesk'), blocks)
+        self.assertIn(('heading', 'Salary Transparency'), blocks)
+        self.assertIn(('bullet', 'Design scalable APIs.'), blocks)
+        self.assertIn(('bullet', 'Experience with Python.'), blocks)
+        self.assertIn(('paragraph', 'We create software for designers.'), blocks)
+        self.assertLess(blocks.index(('heading', 'Responsibilities')),
+                        blocks.index(('heading', 'Minimum Qualifications')))
+
 
 class DesktopLayoutTests(unittest.TestCase):
     def test_panels_fit_supported_desktop_sizes_without_page_scrolling(self):
@@ -169,6 +204,9 @@ class DesktopLayoutTests(unittest.TestCase):
                 button_labels = [child.cget('text') for child in url_tab.winfo_children()
                                  if child.winfo_class() == 'TButton']
                 self.assertEqual(button_labels, ['Clear'])
+                self.assertEqual(view.input_tabs.tab(1, 'text'), 'Paste JD')
+                self.assertEqual(view.pasted_jd_summary.get(), 'No pasted JD yet')
+                self.assertEqual(view.open_jd_editor_button.cget('text'), 'Add JD')
                 self.assertEqual(tuple(view.resume_table['columns']), ('use', 'name', 'edit', 'delete'))
                 self.assertEqual(view.resume_table.heading('edit', 'text'), 'Edit')
                 self.assertEqual(view.resume_table.heading('delete', 'text'), 'Delete')
@@ -178,6 +216,7 @@ class DesktopLayoutTests(unittest.TestCase):
                     root.update()
                     self.assertLessEqual(abs(view.left.winfo_width() - view.right.winfo_width()), 1)
                     self.assertEqual(view.job_check.winfo_height(), view.resumes_box.winfo_height())
+                    self.assertEqual(view.job_check.winfo_height(), 240)
                     self.assertLessEqual(abs(
                         (view.analysis_frame.winfo_rooty() + view.analysis_frame.winfo_height()) -
                         (view.overview.winfo_rooty() + view.overview.winfo_height())), 1)
@@ -200,9 +239,11 @@ class DesktopLayoutTests(unittest.TestCase):
                         self.assertIs(panel.master, view.right)
                     self.assertTrue(view.analysis_empty.winfo_ismapped())
                     self.assertGreater(view.canvas.get_tk_widget().winfo_height(), 70)
+                    tab_heights = []
                     for tab in range(2):
                         view.input_tabs.select(tab)
                         root.update()
+                        tab_heights.append(view.job_check.winfo_height())
                         self.assertEqual(view.job_check.winfo_height(), view.resumes_box.winfo_height())
                         for parent in [view.job_check, view.resumes_box, view.overview]:
                             def check_children(widget):
@@ -213,6 +254,19 @@ class DesktopLayoutTests(unittest.TestCase):
                                     self.assertLessEqual(child.winfo_rooty() + child.winfo_height(), parent.winfo_rooty() + parent.winfo_height() + 1)
                                     check_children(child)
                             check_children(parent)
+                    self.assertEqual(len(set(tab_heights)), 1)
+                    self.assertEqual(int(view.results.cget('height')), 4)
+                root.geometry('900x760+10000+10000')
+                root.update()
+                view.open_jd_editor()
+                root.update()
+                dialogs = [child for child in root.winfo_children() if child.winfo_class() == 'Toplevel']
+                self.assertEqual(len(dialogs), 1)
+                dialog = dialogs[0]
+                self.assertLess(dialog.winfo_width(), root.winfo_width())
+                self.assertLess(dialog.winfo_height(), root.winfo_height())
+                dialog.grab_release()
+                dialog.destroy()
                 result = {
                     'state': 'recommended', 'summary': 'Supported', 'job': {'roles': ['full stack']},
                     'alternatives': [],
