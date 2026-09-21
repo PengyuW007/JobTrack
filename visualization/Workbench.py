@@ -199,10 +199,25 @@ def format_assessment(result):
     if result.get("candidates") and state not in {"none", "insufficient"}:
         best = result["candidates"][0]
         roles = job.get("roles") or []
-        core = ", ".join(skill_label(skill) for skill in job.get("skills", [])) or "No core skills identified"
+        core_skills = [
+            format_technical_terms(skill) if "responsibilities" in job else skill_label(skill)
+            for skill in job.get("skills", [])
+        ]
         gaps = [format_technical_terms(gap) for gap in dict.fromkeys(best.get("gaps", []))]
-        lines.extend(["", "Responsibilities", role_summary(roles),
-                      "", "Core skills", core, "", "To verify"])
+        responsibilities = job.get("responsibilities")
+        lines.extend(["", "Responsibilities"])
+        if responsibilities:
+            lines.extend(f"• {item}" for item in responsibilities)
+        else:
+            lines.append(role_summary(roles))
+        lines.extend(["", "Core skills"])
+        if "responsibilities" in job:
+            lines.extend(f"• {item}" for item in core_skills)
+            if not core_skills:
+                lines.append("No core skills identified")
+        else:
+            lines.append(", ".join(core_skills) or "No core skills identified")
+        lines.extend(["", "To verify"])
         lines.extend([f"{index}. {gap}" for index, gap in enumerate(gaps, 1)]
                      or ["No unresolved core requirement gaps found."])
     if result.get("errors"):
@@ -413,12 +428,12 @@ class Workbench:
         )
         self.job_meta_label.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(2, 0))
         self.job_tags = ttk.Frame(self.job_summary)
-        self.job_tags.grid(row=2, column=0, sticky="w", pady=(5, 0))
+        self.job_tags.grid(row=2, column=0, sticky="ew", pady=(5, 0))
         self.review_button = ttk.Button(
             self.job_summary, text="Review JD", command=self.review_jd,
             width=9, style="Compact.TButton",
         )
-        self.review_button.grid(row=2, column=1, sticky="e", pady=(4, 0))
+        self.review_button.grid(row=2, column=1, sticky="ne", pady=(4, 0))
         analysis = ttk.LabelFrame(self.left, text="Resume choice", padding=8, style="Panel.TLabelframe")
         analysis.grid(row=2, column=0, sticky="nsew")
         analysis.columnconfigure(0, weight=1)
@@ -725,14 +740,18 @@ class Workbench:
         required = [skill for requirement in job.get("required", [])
                     for skill in requirement.get("skills", [])]
         for skill in required + job.get("skills", []):
-            label = skill_label(skill)
+            label = (format_technical_terms(skill) if "responsibilities" in job
+                     else skill_label(skill))
             if label not in tags:
                 tags.append(label)
-            if len(tags) == 6:
+            if len(tags) == 2:
                 break
         for column, label in enumerate(tags):
-            ttk.Label(self.job_tags, text=label, style="Tag.TLabel").grid(
-                row=0, column=column, padx=(0, 5))
+            compact_label = " ".join(label.split()).strip(" .")
+            if len(compact_label) > 24:
+                compact_label = compact_label[:23].rstrip(" ,;:") + "…"
+            ttk.Label(self.job_tags, text=compact_label, style="Tag.TLabel").grid(
+                row=0, column=column, sticky="w", padx=(0, 5))
 
     @staticmethod
     def _role_summary(roles):
@@ -1048,8 +1067,6 @@ class Workbench:
             return "break"
 
         ttk.Button(actions, text="Analyze JD", command=analyze_jd, style="Primary.TButton").grid(row=0, column=2)
-        dialog.bind("<Control-Return>", analyze_jd)
-        dialog.bind("<Command-Return>", analyze_jd)
         (title_entry if not self.jd_description.get().strip() else editor).focus_set()
         dialog.grab_set()
 

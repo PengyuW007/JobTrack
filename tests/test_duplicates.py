@@ -4,7 +4,9 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from business.DuplicateService import DuplicateService, Posting, _fetch_direct, canonical_url, fetch_posting, parse_posting
+from business.DuplicateService import (DuplicateService, Posting, _fetch_direct,
+                                       _fetch_with_browser, canonical_url,
+                                       description_usable, fetch_posting, parse_posting)
 from persistence.DataAccess import DataAccess
 from persistence.DataAccessJob import DataAccessJob
 from business.AnalyticsService import AnalyticsService
@@ -123,11 +125,27 @@ class DuplicateTests(unittest.TestCase):
 
     def test_structured_page_and_ambiguous_page(self):
         node = {'@type': 'JobPosting', 'title': 'Engineer', 'hiringOrganization': {'name': 'Acme'}, 'description': '<p>Work &amp; build</p>'}
-        page = '<script type="application/ld+json">' + json.dumps({'@graph': [node]}) + '</script>'
+        page = ('<div class></div><script type="application/ld+json">' +
+                json.dumps({'@graph': [node]}) + '</script>')
         result = parse_posting('https://example.com/job', page)
         self.assertEqual(result.company, 'Acme')
         self.assertIn('Work & build', result.description)
         self.assertTrue(parse_posting('https://example.com/job', '<title>Sign in</title>').warning)
+
+    def test_schema_microdata_job_page_is_parsed(self):
+        page = '''
+        <main itemscope itemtype="http://schema.org/JobPosting">
+          <h1 itemprop="title">Registered Nurse</h1>
+          <div itemprop="hiringOrganization" itemscope
+               itemtype="http://schema.org/Organization">University Health Network</div>
+          <div itemprop="description"><h2>Responsibilities</h2>
+            <p>Coordinate outpatient care plans.</p>
+          </div>
+        </main>'''
+        result = parse_posting('https://jobs.smartrecruiters.com/example/1', page)
+        self.assertEqual(result.position, 'Registered Nurse')
+        self.assertEqual(result.company, 'University Health Network')
+        self.assertIn('Coordinate outpatient care plans.', result.description)
 
     def test_structured_description_retains_sections_and_related_job_boundary(self):
         from business.ResumeAdvisor import job_profile
@@ -140,6 +158,55 @@ class DuplicateTests(unittest.TestCase):
         profile = job_profile(posting.description, posting.position)
         self.assertNotIn('flutter', profile['skills'])
         self.assertIn('sql', profile['skills'])
+
+    def test_visible_job_text_replaces_placeholder_structured_description(self):
+        node = {'@type': 'JobPosting', 'title': 'Service Desk Technician',
+                'description': '<h2>Responsibilities</h2><p>&lt;&lt;&lt;TO BE ADDED BY HIRING MANAGER&gt;&gt;&gt;</p>'}
+        page = ('<script type="application/ld+json">' + json.dumps(node) + '</script>'
+                '<div class="sfdc_richtext"><h3>Position Overview</h3>'
+                '<p>Support 5,755 service desk tickets annually.</p>'
+                '<h3>Key Responsibilities</h3><ul><li>Administer Microsoft 365.</li></ul></div>')
+        posting = parse_posting('https://example.com/job', page)
+        self.assertTrue(description_usable(posting.description))
+        self.assertIn('5,755 service desk tickets', posting.description)
+        self.assertNotIn('TO BE ADDED', posting.description)
+
+    def test_placeholder_structured_description_uses_browser_fallback(self):
+        url = 'https://example.com/job'
+        placeholder = Posting(url, '', 'Service Desk Technician',
+                              '<<<TO BE ADDED BY HIRING MANAGER>>>')
+        rendered = Posting(url, 'Acme', 'Service Desk Technician',
+                           'Responsibilities\nAdminister Microsoft 365.')
+        with patch('business.DuplicateService._fetch_direct', return_value=placeholder), \
+                patch('business.DuplicateService._fetch_with_browser', return_value=rendered) as browser:
+            self.assertEqual(fetch_posting(url), rendered)
+            browser.assert_called_once_with(url)
+
+    def test_unresolved_placeholder_is_not_returned_as_a_ready_jd(self):
+        url = 'https://example.com/job'
+        placeholder = Posting(url, 'Acme', 'Coordinator',
+                              '<<<TO BE ADDED BY HIRING MANAGER>>>')
+        with patch('business.DuplicateService._fetch_direct', return_value=placeholder), \
+                patch('business.DuplicateService._fetch_with_browser', return_value=placeholder):
+            posting = fetch_posting(url)
+        self.assertEqual(posting.position, 'Coordinator')
+        self.assertEqual(posting.description, '')
+        self.assertIn('complete description', posting.warning)
+
+    def test_browser_runtime_failure_tries_the_next_browser(self):
+        url = 'https://example.com/job'
+        node = {'@type': 'JobPosting', 'title': 'Engineer',
+                'description': 'Responsibilities: Build reliable systems.'}
+        failing, working = MagicMock(), MagicMock()
+        failing.get.side_effect = RuntimeError('browser disconnected')
+        working.execute_script.return_value = 'complete'
+        working.page_source = '<script type="application/ld+json">' + json.dumps(node) + '</script>'
+        with patch('business.DuplicateService._browser_candidates', return_value=('edge', 'chrome')), \
+                patch('business.DuplicateService._create_driver', side_effect=(failing, working)):
+            posting = _fetch_with_browser(url)
+        self.assertEqual(posting.position, 'Engineer')
+        failing.quit.assert_called_once()
+        working.quit.assert_called_once()
 
     def test_title_without_description_uses_browser_fallback(self):
         url = 'https://example.com/job'

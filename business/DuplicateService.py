@@ -68,9 +68,25 @@ class PageParser(HTMLParser):
         self.in_title = False
         self.title = ''
         self.iframes = []
+        self.description_blocks = []
+        self.description_depth = 0
+        self.description_buffer = []
+        self.itemprop_values = {}
+        self._itemprop_captures = []
 
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
+        void_tags = ('area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
+                     'link', 'meta', 'param', 'source', 'track', 'wbr')
+        for capture in self._itemprop_captures:
+            if tag not in void_tags:
+                capture[1] += 1
+        itemprop = (attrs.get('itemprop') or '').strip()
+        if itemprop:
+            if tag == 'meta' and attrs.get('content'):
+                self.itemprop_values.setdefault(itemprop, []).append(attrs['content'])
+            elif tag not in void_tags:
+                self._itemprop_captures.append([itemprop, 1, []])
         if tag == 'script':
             self.capture = attrs.get('type', '').lower() == 'application/ld+json'
             self.buffer = []
@@ -78,12 +94,33 @@ class PageParser(HTMLParser):
             self.in_title = True
         if tag == 'iframe' and attrs.get('src'):
             self.iframes.append(attrs['src'])
+        if self.description_depth:
+            if tag in ('area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
+                       'link', 'meta', 'param', 'source', 'track', 'wbr'):
+                if tag in ('br', 'hr'):
+                    self.description_buffer.append('\n')
+            else:
+                self.description_depth += 1
+                if tag in ('p', 'div', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'):
+                    self.description_buffer.append('\n')
+        else:
+            marker = ' '.join((attrs.get('id') or '', attrs.get('class') or '',
+                               attrs.get('data-testid') or '', itemprop)).casefold()
+            if any(value in marker for value in (
+                    'jobdescriptiontext', 'job-description', 'jobs-description__content',
+                    'jobs-box__html-content', 'show-more-less-html__markup', 'sfdc_richtext')):
+                self.description_depth = 1
+                self.description_buffer = []
 
     def handle_data(self, data):
         if self.capture:
             self.buffer.append(data)
         if self.in_title:
             self.title += data
+        if self.description_depth:
+            self.description_buffer.append(data)
+        for capture in self._itemprop_captures:
+            capture[2].append(data)
 
     def handle_endtag(self, tag):
         if tag == 'script' and self.capture:
@@ -91,6 +128,20 @@ class PageParser(HTMLParser):
             self.capture = False
         if tag == 'title':
             self.in_title = False
+        if self.description_depth:
+            if tag in ('p', 'div', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'):
+                self.description_buffer.append('\n')
+            self.description_depth -= 1
+            if not self.description_depth:
+                self.description_blocks.append(''.join(self.description_buffer))
+                self.description_buffer = []
+        for capture in list(self._itemprop_captures):
+            capture[1] -= 1
+            if capture[1] <= 0:
+                self._itemprop_captures.remove(capture)
+                value = ' '.join(''.join(capture[2]).split())
+                if value:
+                    self.itemprop_values.setdefault(capture[0], []).append(value)
 
 
 def job_nodes(value):
@@ -120,6 +171,10 @@ def parse_posting(url, source):
         company = node.get('hiringOrganization') or {}
         company = company.get('name', '') if isinstance(company, dict) else str(company)
         description = posting_description(str(node.get('description', '')))
+        visible_descriptions = [posting_description(value) for value in parser.description_blocks]
+        visible_descriptions = [value for value in visible_descriptions if description_usable(value)]
+        if not description_usable(description) and visible_descriptions:
+            description = max(visible_descriptions, key=len)
         locations = node.get('jobLocation') or []
         if not isinstance(locations, list):
             locations = [locations]
@@ -141,6 +196,20 @@ def parse_posting(url, source):
             mode = 'Remote'
         return Posting(url, company, str(node.get('title', '')), description,
                        location=' / '.join(names), work_mode=mode)
+    # SmartRecruiters and other job boards increasingly emit schema.org
+    # microdata in the HTML instead of a JSON-LD script.  Reuse the same
+    # guarded description checks for that representation.
+    properties = parser.itemprop_values
+    descriptions = [posting_description(value) for value in properties.get('description', [])]
+    descriptions = [value for value in descriptions if description_usable(value)]
+    if descriptions:
+        title = next(iter(properties.get('title', [])), '')
+        company = next(iter(properties.get('hiringOrganization', [])), '')
+        if not company:
+            company = next(iter(properties.get('name', [])), '')
+        description = max(descriptions, key=len)
+        return Posting(url, company, title, description,
+                       work_mode=work_mode_from_text(description))
     return Posting(url, warning='This page could not be parsed automatically.')
 
 
@@ -162,6 +231,15 @@ def posting_description(source):
     source = re.sub(r'</?(?:p|div|li|br|h[1-6]|ul|ol|section)\b[^>]*>', '\n', source, flags=re.I)
     text = html.unescape(re.sub('<[^>]+>', ' ', source))
     return '\n'.join(' '.join(line.split()) for line in text.splitlines() if line.strip())
+
+
+def description_usable(description):
+    """Reject known recruiting-template placeholders as assessment input."""
+    text = html.unescape(description or '')
+    return bool(text.strip()) and not re.search(
+        r"(?:<{2,}[^>]*(?:to be added|à ajouter)[^>]*>{2,}|"
+        r"\b(?:to be added by (?:the )?hiring manager|à ajouter par le responsable)\b)",
+        text, re.I)
 
 
 def _fetch_direct(url):
@@ -241,96 +319,106 @@ def _fetch_with_browser(url):
     from selenium.webdriver.common.by import By
     from selenium.webdriver.support.ui import WebDriverWait
 
-    driver = None
     last_error = None
+    fallback = None
     for name in _browser_candidates():
+        driver = None
         try:
             driver = _create_driver(name)
-            break
+            driver.set_page_load_timeout(25)
+            driver.get(url)
+            WebDriverWait(driver, 10).until(
+                lambda active: active.execute_script('return document.readyState') == 'complete'
+            )
+            posting = parse_posting(url, driver.page_source)
+            if posting.position and description_usable(posting.description):
+                return posting
+
+            def text_from(selectors):
+                for selector in selectors:
+                    elements = driver.find_elements(By.CSS_SELECTOR, selector)
+                    if elements and elements[0].text.strip():
+                        return elements[0].text.strip()
+                return ''
+
+            def complete_text_from(selectors):
+                for selector in selectors:
+                    elements = driver.find_elements(By.CSS_SELECTOR, selector)
+                    if not elements:
+                        continue
+                    value = driver.execute_script(
+                        "return arguments[0].innerHTML || '';",
+                        elements[0],
+                    )
+                    if value and value.strip():
+                        return posting_description(value)
+                return ''
+
+            position = text_from((
+                '[data-testid="jobsearch-JobInfoHeader-title"]',
+                '.jobsearch-JobInfoHeader-title',
+                'h1[data-testid="jobsearch-JobInfoHeader-title"]',
+                'h1.top-card-layout__title',
+                '.job-details-jobs-unified-top-card__job-title h1',
+                'h1',
+            ))
+            company = text_from((
+                '[data-testid="inlineHeader-companyName"]',
+                '[data-testid="jobsearch-InlineCompanyRating"]',
+                '.jobsearch-InlineCompanyRating',
+                '.topcard__org-name-link',
+                '.job-details-jobs-unified-top-card__company-name',
+                '.top-card-layout__card .topcard__flavor a',
+            ))
+            description = complete_text_from((
+                '[data-testid="jobDescriptionText"]',
+                '#jobDescriptionText',
+                '.show-more-less-html__markup',
+                '.jobs-description__content',
+                '.jobs-box__html-content',
+                '.sfdc_richtext',
+                '[class*="job-description"]',
+            ))
+            if description_usable(description) and (position or posting.position):
+                location = text_from(('.topcard__flavor--bullet', '[data-testid="job-location"]',
+                                      '[data-testid="inlineHeader-companyLocation"]'))
+                return Posting(url, company or posting.company, position or posting.position, description,
+                               location=location or posting.location,
+                               work_mode=posting.work_mode or work_mode_from_text(description))
+            if posting.position:
+                fallback = posting
         except Exception as error:
             last_error = error
-    if driver is None:
-        raise RuntimeError('No supported browser is available for automatic job-page parsing.') from last_error
-    try:
-        driver.set_page_load_timeout(25)
-        driver.get(url)
-        WebDriverWait(driver, 10).until(
-            lambda active: active.execute_script('return document.readyState') == 'complete'
-        )
-        posting = parse_posting(url, driver.page_source)
-        if posting.position and posting.description:
-            return posting
-
-        def text_from(selectors):
-            for selector in selectors:
-                elements = driver.find_elements(By.CSS_SELECTOR, selector)
-                if elements and elements[0].text.strip():
-                    return elements[0].text.strip()
-            return ''
-
-        def complete_text_from(selectors):
-            for selector in selectors:
-                elements = driver.find_elements(By.CSS_SELECTOR, selector)
-                if not elements:
-                    continue
-                value = driver.execute_script(
-                    "return arguments[0].innerHTML || '';",
-                    elements[0],
-                )
-                if value and value.strip():
-                    return posting_description(value)
-            return ''
-
-        position = text_from((
-            '[data-testid="jobsearch-JobInfoHeader-title"]',
-            '.jobsearch-JobInfoHeader-title',
-            'h1[data-testid="jobsearch-JobInfoHeader-title"]',
-            'h1.top-card-layout__title',
-            '.job-details-jobs-unified-top-card__job-title h1',
-            'h1',
-        ))
-        company = text_from((
-            '[data-testid="inlineHeader-companyName"]',
-            '[data-testid="jobsearch-InlineCompanyRating"]',
-            '.jobsearch-InlineCompanyRating',
-            '.topcard__org-name-link',
-            '.job-details-jobs-unified-top-card__company-name',
-            '.top-card-layout__card .topcard__flavor a',
-        ))
-        description = complete_text_from((
-            '[data-testid="jobDescriptionText"]',
-            '#jobDescriptionText',
-            '.show-more-less-html__markup',
-            '.jobs-description__content',
-            '.jobs-box__html-content',
-            '[class*="job-description"]',
-        ))
-        if description and (position or posting.position):
-            location = text_from(('.topcard__flavor--bullet', '[data-testid="job-location"]',
-                                  '[data-testid="inlineHeader-companyLocation"]'))
-            return Posting(url, company or posting.company, position or posting.position, description,
-                           location=location or posting.location,
-                           work_mode=posting.work_mode or work_mode_from_text(description))
-        return posting
-    finally:
-        driver.quit()
+        finally:
+            if driver is not None:
+                try:
+                    driver.quit()
+                except Exception:
+                    pass
+    if fallback is not None:
+        return fallback
+    raise RuntimeError('No supported browser could parse this job page.') from last_error
 
 
 def fetch_posting(url):
     canonical_url(url)
     try:
         posting = _fetch_direct(url)
-        if posting.position and posting.description:
+        if posting.position and description_usable(posting.description):
             return posting
     except requests.RequestException:
         posting = None
     try:
         browser_posting = _fetch_with_browser(url)
-        if browser_posting.position and browser_posting.description:
+        if browser_posting.position and description_usable(browser_posting.description):
             return browser_posting
     except Exception:
         pass
-    return posting or Posting(url, warning='This job board blocked automatic access.')
+    if posting is not None:
+        return Posting(url, posting.company, posting.position,
+                       warning='This job page did not provide a complete description.',
+                       location=posting.location, work_mode=posting.work_mode)
+    return Posting(url, warning='This job board blocked automatic access.')
 
 
 class DuplicateService:

@@ -2,6 +2,8 @@
 
 JobTrack is a private desktop workspace for reviewing job opportunities and tracking applications. It imports job-related Gmail messages into a local SQLite database, displays an application funnel, checks whether a job may have been submitted before, and recommends one of the resumes selected by the user.
 
+Project scope, architecture decisions, roadmap, ownership, AI decision/change history, verification outcomes, and current risks are maintained in the root [JobTrack Single Source of Truth](SSOT.md). This README remains the source for installation and end-user instructions.
+
 The English desktop interface keeps Job check, Application history, and Resume choice on the left, with Resumes and Application overview on the right. The window does not scroll as a page; long descriptions, evidence, and tables can scroll within their own panels.
 
 ## License and access
@@ -75,8 +77,9 @@ When synchronization ends, the chart and the currently checked job's application
 - Accepts a complete job URL from LinkedIn, Indeed, or another public platform.
 - Also accepts a pasted JD through a dedicated form with optional title and company fields and a large description editor. Select **Add JD** or **Edit JD**, then **Analyze JD** to build the job profile, check identifiable history, and compare enabled resumes. Cancel leaves the current draft and results unchanged. History checking requires a URL or both company and title; missing identifiers are shown as unavailable rather than as a negative result.
 - Starts automatically after a URL is pasted or Enter is pressed, and shows an analyzing state while the job page is being read.
-- Reads public `JobPosting` structured data when available.
-- Uses browser fallback for sites that require JavaScript.
+- Reads public `JobPosting` structured data when available, including JSON-LD and schema.org HTML microdata used by current job boards.
+- Rejects unfilled hiring-manager placeholders and prefers a complete visible job description when a page's structured data is stale.
+- Uses browser fallback for sites that require JavaScript and tries the next supported browser if one browser session fails.
 - Searches the complete local history independently of the chart date range.
 - Detects exact URLs while ignoring common tracking parameters.
 - Preserves platform job identifiers during URL normalization.
@@ -108,7 +111,13 @@ Project evidence: java, react, sql
 
 The local assessment uses deterministic English-language rules. It separates work direction from technologies, recognizes skill aliases, checks simple alternative requirements such as Java or Python, and evaluates all candidates before choosing. Resume filenames do not determine the ranking. A confirmed label or a skill list alone does not establish delivery evidence.
 
+Software jobs use the existing technical matcher. Other jobs use a separate local matcher that compares responsibility and requirement text without requiring a known occupation or skill name. It distinguishes required and preferred evidence, tools, transferable skills, credentials, education, and experience. Unknown terms and missing evidence lead to review, never an automatic Skip in the general matcher. Credentials and education still require manual verification; language support is English, and unsupported or incomplete inputs are reported in the existing result summary. When equally ranked resumes contain no delivered responsibility evidence, the general matcher requests review without naming arbitrary leading options; a uniquely relevant resume can still be named for review. The technical matcher's existing decisions are unchanged.
+
+For general jobs, common job-board headings separate responsibilities and qualifications from company descriptions, compensation, benefits, culture, and equity statements. The Summary tab presents the retained responsibilities and core qualifications as separate bullet items so long descriptions do not collapse into one Core skills paragraph. The job summary shows at most two compact single-line tags so they cannot extend into the Review JD control; Review JD retains the complete content.
+
 The result can be Recommended resume, Review two options, No suitable resume found, or More job information needed. Mixed requirements, unassessed qualifications, unknown experience, incomplete inputs, and unreadable candidates prevent an unqualified recommendation. Numeric star ratings are not displayed as confidence. Complex phrasing and unsupported terminology still need manual review; no measured real-world accuracy is claimed.
+
+In the Paste JD editor, Enter key combinations remain available for multiline text editing. Only the Analyze JD button submits the description for analysis.
 
 ### Basic version
 
