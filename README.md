@@ -77,7 +77,7 @@ When synchronization ends, the chart and the currently checked job's application
 - Accepts a complete job URL from LinkedIn, Indeed, or another public platform.
 - Also accepts a pasted JD through a dedicated form with optional title and company fields and a large description editor. Select **Add JD** or **Edit JD**, then **Analyze JD** to build the job profile, check identifiable history, and compare enabled resumes. Cancel leaves the current draft and results unchanged. History checking requires a URL or both company and title; missing identifiers are shown as unavailable rather than as a negative result.
 - Starts automatically after a URL is pasted or Enter is pressed, and shows an analyzing state while the job page is being read.
-- Reads public `JobPosting` structured data when available.
+- Reads public `JobPosting` structured data when available, including JSON-LD and schema.org HTML microdata used by current job boards.
 - Rejects unfilled hiring-manager placeholders and prefers a complete visible job description when a page's structured data is stale.
 - Uses browser fallback for sites that require JavaScript and tries the next supported browser if one browser session fails.
 - Searches the complete local history independently of the chart date range.

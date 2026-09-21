@@ -61,6 +61,20 @@ class GeneralResumeMatcherTests(unittest.TestCase):
                 "Machinist\nResponsibilities\nInspect precision components.", [("R.txt", text)])
             self.assertEqual(result["state"], "provisional")
 
+    def test_learning_duty_is_delivery_but_learning_intent_is_not(self):
+        job = "Early Childhood Educator\nResponsibilities\nPlan play based learning activities."
+        delivered = local_recommendation(
+            job, [("R.txt", "Experience\nPlanned play based learning activities.")])
+        self.assertEqual(delivered["state"], "recommended")
+        aspiring = local_recommendation(
+            job, [("R.txt", "Currently learning how to plan play based activities.")])
+        self.assertEqual(aspiring["state"], "provisional")
+
+    def test_professional_designation_is_a_credential(self):
+        profile = general.job_profile(
+            "Financial Analyst\nRequirements\nCPA designation required.")
+        self.assertEqual(profile["criteria"][0]["type"], "credential")
+
     def test_optional_keywords_do_not_outweigh_mandatory_evidence(self):
         job = ("Coordinator\nResponsibilities\nManage patient schedules.\n"
                "Requirements\nPrepare patient reports.\nNice to have\nUse Quux software.")

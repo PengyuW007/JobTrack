@@ -48,7 +48,7 @@ If these sources disagree, do not silently select one. Record the discrepancy as
 - A dedicated technical matcher that preserves the established software-role behavior.
 - A separate general matcher that accepts unknown English occupation and tool names, compares responsibilities and requirements, and treats missing evidence as review rather than rejection.
 - Explicit handling of duties, transferable skills, tools, credentials or licences, education, experience duration, Must-have requirements, and Nice-to-have requirements.
-- Rejection of unfilled recruiting placeholders, preference for complete visible JD content over stale structured templates, and separation of assessment content from company, compensation, benefits, culture, and equity text.
+- Rejection of unfilled recruiting placeholders, preference for complete visible JD content over stale structured templates, JSON-LD and schema.org HTML microdata parsing, and separation of assessment content from company, compensation, benefits, culture, and equity text.
 - Existing workbench presentation for both matchers; matcher expansion does not require additional panels or controls.
 
 **Out of scope for the current General Resume Matching initiative:**
@@ -74,7 +74,7 @@ Resume analysis has three boundaries:
 
 Routing must use explicit software titles or owned software duties. A tool name by itself must not route an accounting, healthcare, sales, manufacturing, or other general occupation to the technical matcher.
 
-Public-page retrieval treats placeholder descriptions as incomplete, can recover a complete visible description from known job-content containers, and retries the next installed supported browser after a browser runtime failure. General-job parsing recognizes common job-board responsibility and qualification headings, excludes non-assessment sections, and supplies separate responsibility and compact qualification lists to the existing workbench.
+Public-page retrieval treats placeholder descriptions as incomplete, parses JSON-LD and schema.org HTML microdata, can recover a complete visible description from known job-content containers, and retries the next installed supported browser after a browser runtime failure. General-job parsing recognizes common job-board responsibility and qualification headings, excludes non-assessment sections, normalizes English inflectional forms, recognizes professional designations, and supplies separate responsibility and compact qualification lists to the existing workbench.
 
 **Environments:**
 
@@ -113,8 +113,8 @@ Public-page retrieval treats placeholder descriptions as incomplete, can recover
 | Duplicate and repost checking | Delivered | Exact URL and evidence-based likely repost checks operate across complete history |
 | Technical resume matching | Delivered | Existing software-role regression suite passes |
 | General resume matcher isolation | In progress | Advisor dispatches between isolated technical and general matchers without changing the workbench |
-| Cross-industry validation | In progress | Synthetic cases cover healthcare, education, finance, sales, logistics, trades, hospitality, manufacturing, and unknown occupations |
-| General matcher hardening | In progress | Requirement parsing, experience scope, credential review, routing boundaries, and false-positive cases meet acceptance tests |
+| Cross-industry validation | Delivered for the fixed set | Nine industries, 18 role cases, adversarial input boundaries, filename/order invariance, and technical golden regression meet the recorded acceptance thresholds |
+| General matcher hardening | In progress | Requirement parsing, experience scope, credential review, routing boundaries, and false-positive cases meet acceptance tests; additional real-world job-board fixtures remain useful |
 | Additional language packs | Unscheduled | A language is enabled only after dedicated parsing and regression fixtures exist |
 
 ### RACI matrix
@@ -145,6 +145,9 @@ Append one row for every AI-assisted task that makes a decision or changes repos
 | 2026-09-20 | Moved the General Resume Matching task to the saved local checkout and removed its linked worktree | Keep PyCharm, GitHub Desktop, Codex, and branch switching in `D:/4 - Projects/2026/JobTrack` | Local checkout contains the feature branch and all 8 changes; old worktree was clean before removal and no longer appears in `git worktree list` | Project owner |
 | 2026-09-20 | Created an ignored local synthetic marketing resume for functional testing | Let the project owner exercise general-occupation resume import and matching without using personal data | TXT resume stored under the Git-ignored `resumes/` directory; local reader and marketing-JD assessment verified | Project owner |
 | 2026-09-20 | Hardened public JD retrieval and general-job section presentation | Stale structured templates and unrecognized job-board headings caused complete visible JDs to be missed and non-assessment text to fill Core skills | Placeholder structured text now yields to complete visible content or browser fallback; browser runtime failures try the next candidate; general responsibilities and qualifications exclude metadata, company, benefits, culture, and equity sections and render as bullets; targeted suite ran 59 tests with 58 passed and 1 display-only skip, full suite ran 110 tests with 109 passed and 1 display-only skip, and compilation passed | Project owner |
+| 2026-09-20 | Added a fixed nine-industry validation gate and tested 18 current public company postings | Measure general matching against explicit acceptance criteria without treating volatile web pages or copied vacancy text as a reproducible benchmark | Technical golden cases remained 10/10; fixed cross-industry top-choice permutations scored 68/72 (94.44%) and failed the 95% gate because education delivery containing `learning` was filtered; Must-have/Nice-to-have and requirement-type labels scored 53/54 (98.15%); unresolved Must-have false Recommended, false Skip for unknown/missing/unsupported input, evidence traceability, and low-quality input gates all passed. JobTrack retrieved 0/18 SmartRecruiters pages even though the public pages were discoverable, so live acquisition remains a blocking issue. These are fixed-set engineering metrics, not real-world hiring accuracy | Project owner |
+| 2026-09-20 | Fixed inflectional evidence filtering and professional-designation classification | Delivered education evidence such as `planned learning activities` was being dropped, and `CPA designation` was not classified as a credential | Added conservative intent-only learning detection, doubled-consonant normalization for English `-ed/-ing` forms, and designation/accreditation recognition; fixed validation now passes 18/18 top choices, 100% filename/input-order invariance, 54/54 requirement classifications, and the technical golden cases remain 10/10 | Project owner |
+| 2026-09-20 | Added schema.org HTML microdata fallback for public job pages | Current SmartRecruiters pages expose JobPosting microdata instead of the JSON-LD script shape used by the original parser | `DuplicateService` now reads microdata title, organization, and description before browser fallback; the SmartRecruiters validation set was re-run with current accessible company postings and returned complete descriptions for 18/18 pages; the parser regression suite and full suite pass | Project owner |
 
 ### RAID log
 
@@ -159,6 +162,9 @@ Append one row for every AI-assisted task that makes a decision or changes repos
 | I-001 | Issue | Open | There is no shared staging environment or automated CI workflow | Use the documented local test command; reassess when packaging or release automation begins | Engineering |
 | D-001 | Dependency | Active | Gmail sync depends on Google OAuth and the Gmail API | Keep credentials user-supplied and local; retain read-only scope | Product owner |
 | D-002 | Dependency | Active | Some job pages depend on an installed supported browser and site behavior | Preserve guarded direct retrieval, visible-content recovery, automatic browser retry, and Paste JD fallback | Engineering |
+| I-002 | Issue | Resolved | Current SmartRecruiters pages exposed schema.org HTML microdata rather than the JSON-LD shape used by the original parser | Parse schema.org microdata and retain browser/Paste JD fallback; current validation returned complete descriptions for 18/18 pages | Engineering |
+| I-003 | Issue | Resolved | The general matcher treated the word `learning` as aspirational even inside delivered education experience | Scope aspiration detection to intent phrases and normalize doubled consonants in English inflectional forms; fixed validation now passes 18/18 top choices and filename/order invariance | Engineering |
+| I-004 | Issue | Resolved | `CPA designation` was classified as a general responsibility rather than a professional credential | Recognize professional designations and accreditation terms; requirement classification now passes 54/54 fixed cases | Engineering |
 
 ## Maintenance rules
 

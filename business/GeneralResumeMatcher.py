@@ -42,8 +42,9 @@ _STOP = set("""a an the and or of to in on for with using use used you your we o
     was were as by from strong excellent ability knowledge proficiency proficient
     experience professional years year skills skill responsible""".split())
 _NEGATIVE = re.compile(
-    r"\b(?:not|never|no|without|lack\w*|want to|would like|seeking|learning|"
-    r"interested in|requirements|required|must)\b", re.I)
+    r"\b(?:not|never|no|without|lack\w*|want to|would like|seeking|"
+    r"(?:currently\s+)?learning\s+(?:to|about|how to)|interested in|"
+    r"requirements|required|must)\b", re.I)
 _ACTION = re.compile(
     r"\b(?:\w+(?:ed|ing)|led|taught|wrote|ran|built|responsible for)\b", re.I)
 _YEARS = re.compile(r"\b(\d+)\s*\+?\s+years?\b", re.I)
@@ -65,6 +66,10 @@ def _terms(text):
             word = word[:-3]
         elif len(word) > 4 and word.endswith("ed"):
             word = word[:-2]
+        # Normalize doubled consonants created by English -ed/-ing forms:
+        # planned/planning -> plan, stopped/stopping -> stop.
+        if len(word) > 3 and word[-1] == word[-2]:
+            word = word[:-1]
         if len(word) > 4 and word.endswith("e"):
             word = word[:-1]
         terms.add(word)
@@ -124,7 +129,9 @@ def job_profile(description, title=None):
         if negated and not re.search(r"\b(?:but|however|and)\b", source, re.I):
             continue
         kind = "responsibility"
-        if re.search(r"\b(?:licen[cs]e\w*|certificat\w*|registration)\b", source, re.I):
+        if re.search(r"\b(?:licen[cs]e\w*|certificat\w*|registration|designation|"
+                     r"accreditation|accredited|professional\s+(?:credential|designation))\b",
+                     source, re.I):
             kind = "credential"
         elif re.search(r"\b(?:degree|bachelor\w*|master\w*|diploma|education)\b", source, re.I):
             kind = "education"

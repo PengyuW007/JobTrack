@@ -71,9 +71,22 @@ class PageParser(HTMLParser):
         self.description_blocks = []
         self.description_depth = 0
         self.description_buffer = []
+        self.itemprop_values = {}
+        self._itemprop_captures = []
 
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
+        void_tags = ('area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
+                     'link', 'meta', 'param', 'source', 'track', 'wbr')
+        for capture in self._itemprop_captures:
+            if tag not in void_tags:
+                capture[1] += 1
+        itemprop = (attrs.get('itemprop') or '').strip()
+        if itemprop:
+            if tag == 'meta' and attrs.get('content'):
+                self.itemprop_values.setdefault(itemprop, []).append(attrs['content'])
+            elif tag not in void_tags:
+                self._itemprop_captures.append([itemprop, 1, []])
         if tag == 'script':
             self.capture = attrs.get('type', '').lower() == 'application/ld+json'
             self.buffer = []
@@ -92,7 +105,7 @@ class PageParser(HTMLParser):
                     self.description_buffer.append('\n')
         else:
             marker = ' '.join((attrs.get('id') or '', attrs.get('class') or '',
-                               attrs.get('data-testid') or '')).casefold()
+                               attrs.get('data-testid') or '', itemprop)).casefold()
             if any(value in marker for value in (
                     'jobdescriptiontext', 'job-description', 'jobs-description__content',
                     'jobs-box__html-content', 'show-more-less-html__markup', 'sfdc_richtext')):
@@ -106,6 +119,8 @@ class PageParser(HTMLParser):
             self.title += data
         if self.description_depth:
             self.description_buffer.append(data)
+        for capture in self._itemprop_captures:
+            capture[2].append(data)
 
     def handle_endtag(self, tag):
         if tag == 'script' and self.capture:
@@ -120,6 +135,13 @@ class PageParser(HTMLParser):
             if not self.description_depth:
                 self.description_blocks.append(''.join(self.description_buffer))
                 self.description_buffer = []
+        for capture in list(self._itemprop_captures):
+            capture[1] -= 1
+            if capture[1] <= 0:
+                self._itemprop_captures.remove(capture)
+                value = ' '.join(''.join(capture[2]).split())
+                if value:
+                    self.itemprop_values.setdefault(capture[0], []).append(value)
 
 
 def job_nodes(value):
@@ -174,6 +196,20 @@ def parse_posting(url, source):
             mode = 'Remote'
         return Posting(url, company, str(node.get('title', '')), description,
                        location=' / '.join(names), work_mode=mode)
+    # SmartRecruiters and other job boards increasingly emit schema.org
+    # microdata in the HTML instead of a JSON-LD script.  Reuse the same
+    # guarded description checks for that representation.
+    properties = parser.itemprop_values
+    descriptions = [posting_description(value) for value in properties.get('description', [])]
+    descriptions = [value for value in descriptions if description_usable(value)]
+    if descriptions:
+        title = next(iter(properties.get('title', [])), '')
+        company = next(iter(properties.get('hiringOrganization', [])), '')
+        if not company:
+            company = next(iter(properties.get('name', [])), '')
+        description = max(descriptions, key=len)
+        return Posting(url, company, title, description,
+                       work_mode=work_mode_from_text(description))
     return Posting(url, warning='This page could not be parsed automatically.')
 
 

@@ -36,7 +36,7 @@ User pastes a public job URL (or supplies a JD directly)
     -> DuplicateService.fetch_posting()
         -> direct HTTP request
         -> Selenium browser fallback when needed
-        -> JobPosting structured-data parsing
+        -> JobPosting JSON-LD or schema.org microdata parsing
     -> DuplicateService.search()
         -> all local application history and saved evidence
     -> ResumeAdvisor.recommend()
@@ -87,7 +87,7 @@ Database changes must remain backward compatible because schema upgrades run aga
 ## External integrations
 
 - Google OAuth and Gmail API: configured locally with `credentials.json`; produces `token.json`; scope is `gmail.readonly`.
-- Public job pages: fetched with `requests` after URL and public-IP validation.
+- Public job pages: fetched with `requests` after URL and public-IP validation; `DuplicateService` parses JSON-LD and schema.org HTML microdata before using browser fallback.
 - Browser fallback: Selenium runs without a visible window, trying Chrome, Firefox, then Edge on macOS. Safari is excluded from automatic fallback because it does not provide headless operation.
 - Resume formats: TXT/Markdown via standard file reads, DOCX via ZIP/XML extraction, and PDF via `pypdf`.
 

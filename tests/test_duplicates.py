@@ -132,6 +132,21 @@ class DuplicateTests(unittest.TestCase):
         self.assertIn('Work & build', result.description)
         self.assertTrue(parse_posting('https://example.com/job', '<title>Sign in</title>').warning)
 
+    def test_schema_microdata_job_page_is_parsed(self):
+        page = '''
+        <main itemscope itemtype="http://schema.org/JobPosting">
+          <h1 itemprop="title">Registered Nurse</h1>
+          <div itemprop="hiringOrganization" itemscope
+               itemtype="http://schema.org/Organization">University Health Network</div>
+          <div itemprop="description"><h2>Responsibilities</h2>
+            <p>Coordinate outpatient care plans.</p>
+          </div>
+        </main>'''
+        result = parse_posting('https://jobs.smartrecruiters.com/example/1', page)
+        self.assertEqual(result.position, 'Registered Nurse')
+        self.assertEqual(result.company, 'University Health Network')
+        self.assertIn('Coordinate outpatient care plans.', result.description)
+
     def test_structured_description_retains_sections_and_related_job_boundary(self):
         from business.ResumeAdvisor import job_profile
         node = {'@type': 'JobPosting', 'title': 'Full Stack Developer',
