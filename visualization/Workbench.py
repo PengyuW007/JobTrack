@@ -199,10 +199,25 @@ def format_assessment(result):
     if result.get("candidates") and state not in {"none", "insufficient"}:
         best = result["candidates"][0]
         roles = job.get("roles") or []
-        core = ", ".join(skill_label(skill) for skill in job.get("skills", [])) or "No core skills identified"
+        core_skills = [
+            format_technical_terms(skill) if "responsibilities" in job else skill_label(skill)
+            for skill in job.get("skills", [])
+        ]
         gaps = [format_technical_terms(gap) for gap in dict.fromkeys(best.get("gaps", []))]
-        lines.extend(["", "Responsibilities", role_summary(roles),
-                      "", "Core skills", core, "", "To verify"])
+        responsibilities = job.get("responsibilities")
+        lines.extend(["", "Responsibilities"])
+        if responsibilities:
+            lines.extend(f"• {item}" for item in responsibilities)
+        else:
+            lines.append(role_summary(roles))
+        lines.extend(["", "Core skills"])
+        if "responsibilities" in job:
+            lines.extend(f"• {item}" for item in core_skills)
+            if not core_skills:
+                lines.append("No core skills identified")
+        else:
+            lines.append(", ".join(core_skills) or "No core skills identified")
+        lines.extend(["", "To verify"])
         lines.extend([f"{index}. {gap}" for index, gap in enumerate(gaps, 1)]
                      or ["No unresolved core requirement gaps found."])
     if result.get("errors"):
@@ -725,7 +740,8 @@ class Workbench:
         required = [skill for requirement in job.get("required", [])
                     for skill in requirement.get("skills", [])]
         for skill in required + job.get("skills", []):
-            label = skill_label(skill)
+            label = (format_technical_terms(skill) if "responsibilities" in job
+                     else skill_label(skill))
             if label not in tags:
                 tags.append(label)
             if len(tags) == 6:

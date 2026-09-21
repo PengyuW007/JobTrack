@@ -2,6 +2,8 @@
 
 This is the read-first map for scoping changes. Confirm details in the relevant source file before editing; the map is orientation, not a substitute for code inspection.
 
+After reading this map, read the root `SSOT.md`. It is the authoritative source for product charter, scope, architecture decisions, roadmap, ownership, AI decisions and changes, verification outcomes, and the RAID log. This map remains the authority for repository structure, data flow, integration points, and change routing.
+
 ## What the application is
 
 JobTrack is a local Python desktop application. It imports job-related Gmail messages through read-only OAuth, stores normalized application data and evidence in a local SQLite database, displays an application funnel, checks new job URLs against prior applications, and recommends among user-selected resumes with local deterministic rules.
@@ -39,7 +41,8 @@ User pastes a public job URL (or supplies a JD directly)
         -> all local application history and saved evidence
     -> ResumeAdvisor.recommend()
         -> reads enabled local resume files
-        -> separates duties, technologies, requirement groups, and experience
+        -> routes software duties/titles to TechnicalResumeMatcher
+        -> routes other occupations to GeneralResumeMatcher
         -> compares each resume's content evidence and confirmed directions
         -> returns supported, provisional, close, no-fit, or insufficient results
     -> Workbench presents history and recommendation
@@ -63,6 +66,7 @@ User pastes a public job URL (or supplies a JD directly)
 | `tests/` | `unittest` coverage for duplicate detection, schema behavior, parsing/classification, resume management, and local resume advice. |
 | `requirements.txt` | Runtime dependency ranges. |
 | `README.md` | User installation, macOS/Windows startup, OAuth setup, feature behavior, privacy, and test commands. |
+| `SSOT.md` | Root source of truth for product charter, scope, architecture decisions, SOP, roadmap, RACI, AI decision/change log, verification outcomes, and RAID log. |
 | `Start JobTrack.vbs` | Windows-only launcher; never use or advertise it for macOS/Linux. |
 
 No packaging configuration, Makefile, or CI workflow is currently tracked.
@@ -121,7 +125,7 @@ venv/bin/python3 -m compileall -q business gmail objects parsers persistence vis
 
 - Gmail import behavior: begin with `main.py`, then the Gmail helper, classifier/parser, and persistence tests.
 - Duplicate/repost behavior or job-board parsing: begin with `business/DuplicateService.py` and `tests/test_duplicates.py`.
-- Resume file reading/scoring: begin with `business/ResumeAdvisor.py` and `tests/test_resume_advisor.py`.
+- Resume reading/dispatch: begin with `business/ResumeAdvisor.py`. Existing software scoring is isolated in `business/TechnicalResumeMatcher.py`; open-vocabulary English matching for other occupations is in `business/GeneralResumeMatcher.py`. Check `tests/test_resume_advisor.py` and `tests/test_general_resume_matcher.py`. Both engines use the existing workbench result contract; the general engine treats missing evidence as review, not Skip.
 - Funnel counts/date filtering: begin with `business/AnalyticsService.py`, `persistence/DataAccessJob.py`, and the chart-related workbench methods.
 - Main-window behavior/layout: begin with `visualization/Workbench.py`; check whether an existing builder, worker, or event handler can be extended before adding one.
 - Schema or saved settings: begin with `persistence/DataAccess.py`; preserve existing databases and add migration coverage.
@@ -144,11 +148,11 @@ venv/bin/python3 -m compileall -q business gmail objects parsers persistence vis
 
 1. `AGENTS.md` — task boundaries, privacy, external-analysis, and commit rules.
 2. `REPO_MAP.md` — architecture and change-routing overview.
-3. `README.md` — supported user behavior and platform instructions.
-4. `JobTrack.pyw` — normal desktop entry point.
-5. `main.py` — composition and Gmail synchronization.
-6. `visualization/Workbench.py` — main UI and asynchronous orchestration.
-7. `persistence/DataAccess.py` — schema and local state writes.
-8. `business/DuplicateService.py` — job-page parsing and history matching.
-9. `business/ResumeAdvisor.py` — local resume parsing and recommendation.
+3. `SSOT.md` — product scope, AI decisions and changes, verification outcomes, roadmap, ownership, and RAID.
+4. `README.md` — supported user behavior and platform instructions.
+5. `JobTrack.pyw` — normal desktop entry point.
+6. `main.py` — composition and Gmail synchronization.
+7. `visualization/Workbench.py` — main UI and asynchronous orchestration.
+8. `persistence/DataAccess.py` — schema and local state writes.
+9. `business/DuplicateService.py` and `business/ResumeAdvisor.py` — job checks and resume matching.
 10. `tests/test_duplicates.py` and `tests/test_resume_advisor.py` — executable behavior contracts.
