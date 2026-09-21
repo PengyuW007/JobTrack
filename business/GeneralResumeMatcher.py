@@ -116,6 +116,17 @@ def job_profile(description, title=None):
     if title is None:
         lines = cleaned.splitlines()
         title, cleaned = (lines[0], "\n".join(lines[1:])) if len(lines) > 1 else ("", cleaned)
+    else:
+        lines = cleaned.splitlines()
+        first_content = next((index for index, line in enumerate(lines) if line.strip()), None)
+        if first_content is not None:
+            supplied_title = re.sub(r"^\s*(?:position|job title)\s*:\s*", "", title,
+                                    flags=re.I).strip(" .:;,-").casefold()
+            leading_line = re.sub(r"^\s*(?:position|job title)\s*:\s*", "",
+                                  lines[first_content], flags=re.I).strip(" .:;,-").casefold()
+            if supplied_title and leading_line == supplied_title:
+                del lines[first_content]
+                cleaned = "\n".join(lines)
     criteria = []
     for section, source in _blocks(cleaned):
         if section == "ignore" or _PLACEHOLDER.search(source):
@@ -250,17 +261,22 @@ def local_recommendation(description, resumes, job_title=None, resume_profiles=N
     candidates.sort(key=lambda item: item["rank"], reverse=True)
     best = candidates[0]
     ties = [item for item in candidates if item["rank"] == best["rank"]]
+    has_delivered_evidence = bool(best["project_overlap"])
+    has_distinct_relevant_evidence = bool(best["overlap"] and len(ties) == 1)
+    has_review_choice = has_delivered_evidence or has_distinct_relevant_evidence
     if not job["input_ready"]:
         state, summary = "insufficient", "Unable to assess reliably. Provide an English JD with responsibilities and requirements."
-    elif len(ties) > 1 and best["overlap"]:
+    elif len(ties) > 1 and has_delivered_evidence:
         state, summary = "close", "These resumes have similar evidence; review the requirements before choosing."
     elif best["eligible"]:
         state, summary = "recommended", "The resume contains evidence for the stated responsibilities and requirements."
+    elif not has_review_choice:
+        state, summary = "provisional", "Review needed: no resume contains delivered evidence for the stated responsibilities."
     else:
         state, summary = "provisional", "Review needed: missing or ambiguous evidence does not establish a mismatch."
     return {
-        "file": best["file"] if job["input_ready"] else None,
-        "name": best["name"] if job["input_ready"] else None,
+        "file": best["file"] if job["input_ready"] and has_review_choice else None,
+        "name": best["name"] if job["input_ready"] and has_review_choice else None,
         "state": state, "summary": summary, "job": job, "candidates": candidates,
         "score": best["score"], "alternatives": [item["name"] for item in ties] if state == "close" else [],
         "closest_resume": None, "closest_resumes": [],

@@ -328,7 +328,15 @@ class DesktopLayoutTests(unittest.TestCase):
                     {'skills': ['react', 'spring boot', 'sql']}],
                     'skills': ['react', 'spring boot', 'sql', 'aws', 'css', 'graphql']})
                 self.assertEqual([child.cget('text') for child in view.job_tags.winfo_children()],
-                                 ['Full Stack', 'React', 'Spring Boot', 'SQL', 'AWS', 'CSS'])
+                                 ['Full Stack', 'React'])
+                self.assertEqual(
+                    [(int(child.grid_info()['row']), int(child.grid_info()['column']))
+                     for child in view.job_tags.winfo_children()],
+                    [(0, 0), (0, 1)])
+                view.show_job_tags({'roles': ['administrative project coordinator'],
+                                    'required': [], 'skills': []})
+                self.assertEqual([child.cget('text') for child in view.job_tags.winfo_children()],
+                                 ['Administrative project…'])
         finally:
             root.destroy()
             db.close()

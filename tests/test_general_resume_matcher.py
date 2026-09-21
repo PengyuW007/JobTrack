@@ -100,6 +100,25 @@ class GeneralResumeMatcherTests(unittest.TestCase):
             self.assertEqual(result["state"], "close")
             self.assertEqual(len(result["alternatives"]), 2)
 
+    def test_zero_evidence_tie_does_not_name_arbitrary_resumes(self):
+        result = local_recommendation(
+            "Marketing Coordinator\nResponsibilities\nCoordinate product launch campaigns.",
+            [("Mobile.txt", "Built Android mobile applications."),
+             ("SDE.txt", "Built Java backend services.")],
+            job_title="Marketing Coordinator")
+        self.assertEqual(result["state"], "provisional")
+        self.assertIsNone(result["file"])
+        self.assertIsNone(result["name"])
+        self.assertEqual(result["alternatives"], [])
+        self.assertIn("no resume contains delivered evidence", result["summary"])
+
+    def test_supplied_title_is_not_repeated_as_a_requirement(self):
+        profile = general.job_profile(
+            "Position: Marketing Coordinator\nResponsibilities\nCoordinate campaigns.",
+            "Marketing Coordinator")
+        self.assertEqual([item["source"] for item in profile["criteria"]],
+                         ["Coordinate campaigns."])
+
     def test_experience_is_scoped_and_not_inferred_from_dates(self):
         job = ("Payroll Clerk\nResponsibilities\nPrepare payroll reports.\n"
                "Requirements\n5 years payroll experience required.")
